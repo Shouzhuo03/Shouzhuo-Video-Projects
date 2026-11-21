@@ -1,0 +1,789 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<link rel="icon" href="data:,">
+<title>复刻</title>
+<link rel="stylesheet" href="fonts.css">
+<style>
+  html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; background: #0b0b0c; }
+  #stage { position: absolute; left: 0; top: 0; overflow: hidden; background: #fff; }
+  #plane { position: absolute; left: 0; top: 0; transform-origin: 50% 50%; transform-style: flat; }
+  #world { position: absolute; left: 0; top: 0; width: 1px; height: 1px; transform-origin: 0 0; }
+  #world div, #world img, #world span.b { position: absolute; }
+  #world .flow, #world .flow * { position: static; }
+  #world img { display: block; }
+  #player { position: absolute; inset: 0; display: none; background: rgba(0,0,0,0); }
+  #player img { position: absolute; left: 0; top: 0; transform-origin: 0 0; display: block; }
+  #outro { position: absolute; inset: 0; overflow: hidden; display: none; pointer-events: none; }
+  #oin { position: absolute; left: 0; top: 0; width: 1080px; height: 1920px; transform-origin: 0 0; }
+  #oin div, #oin span.g, #oin img { position: absolute; }
+  #oin .flow, #oin .flow * { position: static; }
+  #vig { position: absolute; inset: 0; pointer-events: none; background: radial-gradient(ellipse 85% 75% at 50% 50%, transparent 65%, rgba(0,0,0,.07) 100%); }
+  .ch { display: inline-block; white-space: pre; }
+
+  #ui { position: fixed; box-sizing: border-box; inset: auto 0 0; height: 46px; display: flex; align-items: center; gap: 12px; padding: 0 12px; background: #19191b; color: #ddd; font: 13px system-ui, sans-serif; }
+  #ui button { white-space: nowrap; cursor: pointer; }
+  #ui button { color: inherit; background: #313137; border: 1px solid #525258; border-radius: 4px; padding: 4px 9px; }
+  #position { flex: 1; min-width: 45px; }
+  #clock { min-width: 58px; text-align: right; font-variant-numeric: tabular-nums; }
+  body:not(.preview) #ui { display: none; }
+</style>
+</head>
+<body>
+<div id="stage"><div id="plane"><div id="world"></div></div><div id="vig"></div><div id="player"><img id="pvid"></div><div id="outro"><div id="oin"></div></div></div>
+<div id="ui">
+  <button id="play" type="button">播放</button>
+  <input id="position" type="range" min="0" value="0" step="any" aria-label="播放进度">
+  <output id="clock" for="position">0.00 s</output>
+</div>
+<script src="config.js"></script>
+<script src="media.js"></script>
+<script src="motion.js"></script>
+<script src="tune.js"></script>
+<script src="timeline.js"></script>
+<script src="story.js"></script>
+<script src="rig.js"></script>
+<script src="graphics-data.js"></script>
+<script src="preview.js"></script>
+<script>
+const {FPS, W, H, clamp, lerp, brake01, spike01, springStep, springTo} = M;
+const {F, SHOTS, shotIndex, IN, X, BAR, GRAB_AT, AI, WIN, CONV, CANVAS, COPY, PLAY_FRAMES, KEYS, REPLY3_T} = STORY;
+const q = new URLSearchParams(location.search);
+const CJK_FONT = '"Noto Sans SC Fallback", "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC"';
+const UI_FONT = `Inter, SHS, ${CJK_FONT}, sans-serif`;
+const SERIF_FONT = `SHSerif, "Songti SC", "SimSun", ${CJK_FONT}, serif`;
+document.title = FilmCopy.pageTitle;
+const GRAY = '#536471', INK = '#0F1419', LINE = '#EFF3F4';
+const capture = q.has('capture');
+document.body.classList.toggle('preview', !capture);
+
+const world = document.getElementById('world');
+function el(parent, tag, style = {}, html) {
+  const e = document.createElement(tag);
+  Object.assign(e.style, style);
+  if (html !== undefined) e.innerHTML = html;
+  parent.appendChild(e);
+  return e;
+}
+const box = (parent, x, y, style = {}, html) => el(parent, 'div', {left: x + 'px', top: y + 'px', ...style}, html);
+const measure = document.createElement('canvas').getContext('2d');
+function fitText(element, value, maxWidth) {
+  const style = getComputedStyle(element);
+  measure.font = `${style.fontWeight} ${style.fontSize} ${style.fontFamily}`;
+  const width = measure.measureText(value).width;
+  if (width > maxWidth) element.style.fontSize = `${parseFloat(style.fontSize) * maxWidth / width}px`;
+}
+const textBox = (parent, x, y, style, value) => {
+  const e = box(parent, x, y, style);
+  e.textContent = value;
+  return e;
+};
+const pending = [];
+function setSrc(img, src) {
+  if (img.dataset.src === src) return;
+  img.dataset.src = src; img.src = src;
+  pending.push(img.decode().catch(() => {}));
+}
+
+const ENTER = {...TUNE.global.enter, settle: 45};
+function enter(e, f, f0, size, o = {}) {
+  const u = f - f0, s = e.style;
+  if (u < 0) { s.opacity = 0; return; }
+  if (u > ENTER.settle) { s.opacity = ''; s.filter = ''; s.transform = o.keep || ''; return; }
+  const {blur = ENTER.blur, dy = ENTER.dy, s0 = ENTER.s0, origin = '50% 80%'} = o;
+  const k = springStep(u / FPS, ENTER.hz, ENTER.zeta), b = blur * size * (1 - brake01(u, 0));
+  s.opacity = clamp((u + 1) / 3);
+  s.filter = b > 0.02 ? `blur(${b.toFixed(3)}px)` : '';
+  s.transform = `translateY(${(dy * size * (1 - k)).toFixed(3)}px) scale(${(s0 + (1 - s0) * k).toFixed(4)})` + (o.keep ? ' ' + o.keep : '');
+  s.transformOrigin = origin;
+}
+const startCache = new Map();
+function revealStarts(n, f0, peak) {
+  const key = `${n}|${f0}|${peak}`;
+  if (startCache.has(key)) return startCache.get(key);
+  const s = [];
+  for (let i = 0; i < n; i++) {
+    const target = (0.9 * i) / n;
+    let lo = f0, hi = f0 + 300;
+    for (let k = 0; k < 40; k++) { const m = (lo + hi) / 2; if (spike01(m, f0, peak) >= target) hi = m; else lo = m; }
+    s.push(i === 0 ? f0 : hi);
+  }
+  startCache.set(key, s);
+  return s;
+}
+
+function chars(parent, segs, size, f0, peak) {
+  const spans = [];
+  for (const sg of segs) for (const c of Array.from(sg.t)) { const sp = el(parent, 'span', sg.style || {}); sp.className = 'ch'; sp.textContent = c; spans.push(sp); }
+  const starts = revealStarts(spans.length, f0, peak);
+  return {end: starts[starts.length - 1], update: (f) => spans.forEach((sp, i) => enter(sp, f, starts[i], size))};
+}
+const line = (e, f, f0) => { e.style.transform = f < f0 ? 'scaleX(0)' : `scaleX(${brake01(f, f0)})`; e.style.transformOrigin = '0 50%'; };
+
+const svg = (size, inner, color = GRAY, fill = 'none', sw = 1.8) => `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="${fill}" stroke="${color}" stroke-width="${sw}" stroke-linecap="round" stroke-linejoin="round" style="display:block">${inner}</svg>`;
+const ICON = {
+  back: svg(20, '<path d="M19 12H5M11 6l-6 6 6 6"/>', INK, 'none', 2),
+  more: svg(18, `<circle cx="5" cy="12" r="1" fill="${GRAY}"/><circle cx="12" cy="12" r="1" fill="${GRAY}"/><circle cx="19" cy="12" r="1" fill="${GRAY}"/>`),
+  reply: svg(19, '<path d="M4 11.5a7.5 7 0 0 1 7.5-7h1A7.5 7 0 0 1 20 11.5c0 4-3.4 7-7.5 7H11l-5 3v-4A7 7 0 0 1 4 11.5z"/>'),
+  repost: svg(19, '<path d="M7 7h10l-3-3M17 7v7M17 17H7l3 3M7 17v-7"/>', '#00BA7C'),
+  like: svg(19, '<path d="M12 20s-7-4.4-8.6-8.6C2.2 8 4.4 5 7.4 5c2 0 3.4 1.2 4.6 2.6C13.2 6.2 14.6 5 16.6 5c3 0 5.2 3 4 6.4C19 15.6 12 20 12 20z"/>', '#F91880', '#F91880'),
+  bookmark: svg(19, '<path d="M6 3h12v18l-6-4-6 4z"/>', '#1D9BF0', '#1D9BF0'),
+  share: svg(19, '<path d="M12 15V4M7 8l5-5 5 5M5 14v6h14v-6"/>'),
+  badge: '<svg width="18" height="18" viewBox="0 0 24 24" style="display:block"><circle cx="12" cy="12" r="10" fill="#1D9BF0"/><path d="M7.5 12.2l3 3 6-6.4" stroke="#fff" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  play: (s) => `<svg width="${s}" height="${s}" viewBox="0 0 24 24" style="display:block"><path d="M7 4.5v15l12-7.5z" fill="#fff"/></svg>`,
+  pause: '<svg width="24" height="24" viewBox="0 0 24 24" style="display:block"><path d="M7 5h3.2v14H7zM13.8 5H17v14h-3.2z" fill="#fff"/></svg>',
+  ctl: (d) => svg(22, `<path d="${d}"/>`, '#fff'),
+  chevron: svg(30, '<path d="M6 9.5l6 6 6-6"/>', '#8B887F', 'none', 2.4),
+  plus: svg(16, '<path d="M12 5v14M5 12h14"/>', '#8B887F', 'none', 2),
+  up: svg(28, '<path d="M12 19V5M6 11l6-6 6 6"/>', '#fff', 'none', 2.6),
+};
+
+const canvasEl = box(world, -8000, -8000, {width: '20000px', height: '20000px', display: 'none', background: CANVAS.bg,
+  backgroundImage: `linear-gradient(${CANVAS.grid} 2px, transparent 2px), linear-gradient(90deg, ${CANVAS.grid} 2px, transparent 2px)`,
+  backgroundSize: `${CANVAS.gridStep}px ${CANVAS.gridStep}px`, backgroundPosition: '-1px -1px'});
+
+const xpage = box(world, 0, 0);
+const XP = {};
+(() => {
+  const c = X.col;
+  box(xpage, c.x, -3000, {width: c.w + 'px', height: '7000px', borderLeft: `1px solid ${LINE}`, borderRight: `1px solid ${LINE}`, boxSizing: 'border-box'});
+  XP.header = box(xpage, c.x, 0, {width: c.w + 'px', height: X.headerH + 'px', borderBottom: `1px solid ${LINE}`, boxSizing: 'border-box'});
+  box(XP.header, 16, 16, {}, ICON.back);
+  textBox(XP.header, 70, 12, {font: `700 20px/28px ${UI_FONT}`, color: INK}, COPY.header);
+  XP.avatar = el(xpage, 'img', {left: X.avatar.x + 'px', top: X.avatar.y + 'px', width: X.avatar.d + 'px', height: X.avatar.d + 'px', borderRadius: '50%'});
+  XP.avatar.src = AVATAR;
+  const name = box(xpage, 464, X.nameY, {font: `700 15px/20px ${UI_FONT}`, color: INK, whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: '3px'});
+  const nameText = el(name, 'span', {position: 'static'});
+  XP.name = chars(nameText, [{t: COPY.name}], 15, IN.name.f0, IN.name.peak);
+  XP.badge = el(name, 'span', {position: 'static', display: 'inline-flex'}, ICON.badge);
+  XP.handle = chars(box(xpage, 464, X.handleY, {font: `400 15px/20px ${UI_FONT}`, color: GRAY, whiteSpace: 'nowrap'}), [{t: COPY.handle}], 15, IN.handle.f0, IN.handle.peak);
+  XP.more = box(xpage, c.x + c.w - 36, X.nameY + 4, {}, ICON.more);
+  XP.text = chars(box(xpage, X.text.x, X.text.y, {font: `400 ${X.text.size}px/24px ${UI_FONT}`, color: INK, whiteSpace: 'nowrap'}), [{t: COPY.tweet}], X.text.size, IN.text.f0, IN.text.peak);
+
+  const v = X.video;
+  XP.video = box(xpage, v.x, v.y, {width: v.w + 'px', height: v.h + 'px', borderRadius: '16px', overflow: 'hidden', border: '1px solid #CFD9DE', background: '#000', boxSizing: 'border-box'});
+  XP.poster = el(XP.video, 'img', {left: 0, top: 0, width: '100%', height: '100%', objectFit: 'cover'}); XP.poster.src = VIDEO_PLACEHOLDERS.en;
+  XP.frame = el(XP.video, 'img', {left: 0, top: 0, width: '100%', height: '100%', objectFit: 'cover', display: 'none'});
+  XP.bigPlay = box(XP.video, v.w / 2 - 34, v.h / 2 - 34, {width: '68px', height: '68px', borderRadius: '50%', background: 'rgba(15,20,25,.62)', border: '2px solid rgba(255,255,255,.9)', boxSizing: 'border-box', display: 'grid', placeItems: 'center'},
+    `<div class="flow" style="margin-left:5px">${ICON.play(30)}</div>`);
+  XP.dur = box(XP.video, 12, v.h - 34, {padding: '1px 6px', borderRadius: '4px', background: 'rgba(0,0,0,.6)', color: '#fff', font: `500 13px/20px ${UI_FONT}`}, '0:20');
+  XP.ctrl = box(XP.video, 0, v.h - 74, {width: '100%', height: '74px', background: 'linear-gradient(transparent, rgba(0,0,0,.55))'});
+  const track = box(XP.ctrl, 12, 14, {width: v.w - 24 + 'px', height: '3px', borderRadius: '2px', background: 'rgba(255,255,255,.35)'});
+  XP.prog = box(track, 0, 0, {height: '100%', width: '0%', background: '#fff', borderRadius: '2px'});
+  XP.pp = box(XP.ctrl, 12, 38);
+  XP.time = box(XP.ctrl, v.w - 196, 41, {color: '#fff', font: `500 15px/20px ${UI_FONT}`});
+  box(XP.ctrl, v.w - 108, 40, {display: 'flex', gap: '14px'}, ['M4 6h16v12H4zM10 10.5a2 2 0 1 0 0 3M16 10.5a2 2 0 1 0 0 3', 'M4 10h3l5-4v12l-5-4H4zM16 9l5 6M21 9l-5 6', 'M4 9V4h5M20 15v5h-5M4 4l6 6M20 20l-6-6']
+    .map((d) => `<div class="flow">${ICON.ctl(d)}</div>`).join(''));
+
+  XP.tr = box(xpage, 0, 0, {width: '1400px', height: '400px'});
+  const bar = box(XP.tr, BAR.x, BAR.y, {width: BAR.w + 'px', height: BAR.h + 'px', padding: '0 8px', boxSizing: 'border-box', background: '#111', whiteSpace: 'nowrap',
+    font: `700 ${BAR.size}px/${BAR.h}px ${SERIF_FONT}`, color: '#fff', borderRadius: '3px'});
+  XP.translation = el(bar, 'span', {position: 'static', display: 'inline-block', whiteSpace: 'pre'});
+  for (const part of COPY.translation) {
+    el(XP.translation, 'span', {position: 'static', color: part.hl ? '#6FE59A' : '#fff'}).textContent = part.t;
+  }
+
+  XP.meta = chars(box(xpage, X.text.x, X.metaY, {font: `400 15px/20px ${UI_FONT}`, color: GRAY, whiteSpace: 'nowrap'}),
+    [{t: COPY.meta[0]}, {t: COPY.meta[1], style: {color: INK, fontWeight: 700}}, {t: COPY.meta[2]}], 15, IN.meta.f0, IN.meta.peak);
+  XP.div1 = box(xpage, X.text.x, X.div1, {width: '568px', height: '1px', background: LINE});
+  const counts = [[ICON.reply, COPY.counts.reply, GRAY], [ICON.repost, COPY.counts.repost, '#00BA7C'], [ICON.like, COPY.counts.like, '#F91880'], [ICON.bookmark, COPY.counts.bookmark, '#1D9BF0']];
+  XP.actions = counts.map(([icon, n, color], i) => {
+    const x = X.text.x + 4 + i * 128;
+    const ic = box(xpage, x, X.actionsY, {}, icon);
+    const num = chars(box(xpage, x + 25, X.actionsY, {font: `400 14px/19px ${UI_FONT}`, color, whiteSpace: 'nowrap'}), [{t: n}], 14, IN.actions + 2 * i + 1, 2);
+    return {ic, num, f0: IN.actions + 2 * i};
+  });
+  XP.share = box(xpage, X.text.x + 545, X.actionsY, {}, ICON.share);
+  XP.div2 = box(xpage, X.text.x, X.div2, {width: '568px', height: '1px', background: LINE});
+  XP.replyAv = box(xpage, X.text.x, X.replyY, {width: '40px', height: '40px', borderRadius: '50%', background: '#CFD9DE'});
+  XP.replyPh = chars(box(xpage, X.text.x + 52, X.replyY + 7, {font: `400 20px/26px ${UI_FONT}`, color: GRAY, whiteSpace: 'nowrap'}), [{t: COPY.replyPlaceholder}], 20, IN.reply + 2, 3);
+  XP.replyBtn = box(xpage, X.text.x + 568 - 70, X.replyY + 2, {padding: '8px 18px', borderRadius: '999px', background: '#8E9BA3', color: '#fff', font: `700 15px/20px ${UI_FONT}`, whiteSpace: 'nowrap'}, '回复');
+})();
+
+const dimEl = box(world, X.video.x, X.video.y, {width: X.video.w + 'px', height: X.video.h + 'px', borderRadius: '16px', zIndex: 5, pointerEvents: 'none', display: 'none'});
+function drawDim(f) {
+  const a = f < F.drag1 ? RIG.dim(f) : 0;
+  dimEl.style.display = a > 0.002 ? 'block' : 'none';
+  if (a > 0.002) dimEl.style.boxShadow = `0 0 0 9000px rgba(8,8,10,${a.toFixed(4)})`;
+}
+
+function drawX(f) {
+  const v = X.video;
+  enter(XP.header, f, IN.header, 30, {blur: 0.12, dy: 0.3, origin: '50% 50%'});
+  enter(XP.avatar, f, IN.avatar, X.avatar.d, {blur: 0.15, dy: 0.3, origin: '50% 50%'});
+  XP.name.update(f); enter(XP.badge, f, XP.name.end + 1, 18, {origin: '50% 50%'});
+  XP.handle.update(f); enter(XP.more, f, IN.more, 18, {origin: '50% 50%'});
+  XP.text.update(f);
+
+  enter(XP.video, f, IN.video, 40, {blur: 0.12, dy: 0.5, s0: 0.9, origin: '50% 0%'});
+  if (f >= F.grab) XP.video.style.opacity = 1 - 0.7 * clamp((f - F.grab) / 5);
+  const playing = f >= F.play;
+  XP.poster.style.display = playing ? 'none' : 'block';
+  XP.frame.style.display = playing ? 'block' : 'none';
+  if (playing) setSrc(XP.frame, VIDEO_PLACEHOLDERS.en);
+  const big = f < F.play ? 1 : clamp(1 - (f - F.play) / 3);
+  XP.bigPlay.style.opacity = big; XP.dur.style.opacity = big;
+  const ctrl = f < F.play ? 0 : f < F.away0 + 6 ? 1 : f < F.ret1 ? clamp(1 - (f - F.away0 - 6) / 8) : clamp((f - F.ret1) / 4) * clamp(1 - (f - F.grab) / 4);
+  XP.ctrl.style.opacity = ctrl;
+  const playEnd = F.play + PLAY_FRAMES, secs = Math.min(Math.floor(Math.max(0, f - F.play) / FPS), Math.floor(PLAY_FRAMES / FPS));
+  XP.time.textContent = `0:${String(secs).padStart(2, '0')} / 0:20`;
+  XP.prog.style.width = (f < F.play ? 0 : clamp((Math.min(f, playEnd) - F.play) / FPS / 20.4) * 100) + '%';
+  const pp = f < playEnd ? 'pause' : 'play';
+  if (XP.pp.dataset.k !== pp) { XP.pp.dataset.k = pp; XP.pp.innerHTML = pp === 'pause' ? ICON.pause : ICON.play(24); }
+
+  const wx = RIG.wipeX(f);
+  const m = wx < -1000 ? 'linear-gradient(90deg, transparent, transparent)' : wx > 1000 ? 'none' : `linear-gradient(90deg, #000 0px, #000 ${(wx - 3).toFixed(2)}px, transparent ${(wx + 3).toFixed(2)}px)`;
+  XP.tr.style.webkitMaskImage = m; XP.tr.style.maskImage = m;
+  XP.meta.update(f); line(XP.div1, f, IN.div1);
+  for (const a of XP.actions) { enter(a.ic, f, a.f0, 19, {origin: '50% 50%'}); a.num.update(f); }
+  enter(XP.share, f, IN.actions + 8, 19, {origin: '50% 50%'});
+  line(XP.div2, f, IN.div2);
+  enter(XP.replyAv, f, IN.reply, 40, {blur: 0.15, dy: 0.3, origin: '50% 50%'});
+  XP.replyPh.update(f);
+  enter(XP.replyBtn, f, IN.reply + 6, 34, {blur: 0.12, dy: 0.3, origin: '50% 50%'});
+}
+
+const T = (x, y) => `translate(${(+x).toFixed(3)}px, ${(+y).toFixed(3)}px)`;
+const sheet = box(world, -3000, 0, {width: '8000px', height: '6000px', background: AI.bg, boxShadow: '0 16px 44px rgba(40,34,24,.2), 0 2px 6px rgba(40,34,24,.12)', borderBottom: `1px solid ${AI.line}`, boxSizing: 'border-box', display: 'none'});
+const tab = box(world, 0, 0, {width: RIG.TAB.w + 'px', height: RIG.TAB.h + 'px', background: AI.bg, borderRadius: '0 0 18px 18px',
+  boxShadow: '0 6px 14px rgba(40,34,24,.16), 0 1px 3px rgba(40,34,24,.1)', display: 'none', placeItems: 'center'}, `<div class="flow">${ICON.chevron}</div>`);
+
+const tabSeam = el(tab, 'div', {left: '-6px', top: '-8px', width: RIG.TAB.w + 12 + 'px', height: '9px', background: AI.bg});
+
+const canvasUnder = box(world, 0, 0, {display: 'none'});
+const aipage = box(world, 0, 0, {display: 'none'});
+const AP = {};
+(() => {
+  const c = AI.composer, B = AI.send, V = CONV;
+
+  AP.win = box(aipage, WIN.x, WIN.y, {width: WIN.w + 'px', height: WIN.h + 'px', background: AI.bg, borderRadius: WIN.r + 'px', overflow: 'hidden', display: 'none',
+    boxShadow: '0 40px 110px rgba(40,34,24,.18), 0 8px 26px rgba(40,34,24,.12), 0 0 0 1px rgba(40,34,24,.12)'});
+  const side = box(AP.win, 0, 0, {width: WIN.side + 'px', height: WIN.h + 'px', background: AI.side, borderRight: `1px solid ${AI.sideLine}`, boxSizing: 'border-box'});
+  [0, 1, 2].forEach((i) => box(side, 20 + i * 20, 16, {width: '12px', height: '12px', borderRadius: '50%', background: '#CFCBC1'}));
+  box(side, 14, 58, {width: WIN.side - 28 + 'px', height: '38px', borderRadius: '10px', background: '#FFFFFF', border: `1px solid ${AI.line}`, boxSizing: 'border-box', padding: '0 12px', display: 'flex', alignItems: 'center', gap: '8px',
+    font: `500 15px/20px ${UI_FONT}`, color: AI.ink, whiteSpace: 'nowrap'}, `<span class="flow" style="display:inline-flex">${svg(16, '<path d="M12 5v14M5 12h14"/>', AI.ink, 'none', 2)}</span><span style="position:static">新对话</span>`);
+  box(side, 22, 124, {font: `500 12px/16px ${UI_FONT}`, color: '#A19D93', whiteSpace: 'nowrap'}, '最近');
+  COPY.window.chats.forEach((t, i) => textBox(side, 12, 146 + i * 36, {width: WIN.side - 24 + 'px', height: '32px', borderRadius: '8px', background: i === 0 ? '#DEDBD2' : 'transparent', boxSizing: 'border-box',
+    padding: '0 10px', font: `400 14px/32px ${UI_FONT}`, color: i === 0 ? AI.ink : '#6F6C64', whiteSpace: 'nowrap', overflow: 'hidden'}, t));
+  box(AP.win, WIN.side, 0, {width: WIN.w - WIN.side + 'px', height: WIN.bar + 'px', borderBottom: `1px solid ${AI.sideLine}`, boxSizing: 'border-box', display: 'grid', placeItems: 'center',
+    font: `500 14px/20px ${UI_FONT}`, color: '#6F6C64', whiteSpace: 'nowrap'}, COPY.window.title);
+
+  AP.winSel = box(aipage, WIN.x - 14, WIN.y - 14, {width: WIN.w + 28 + 'px', height: WIN.h + 28 + 'px', border: '5px dashed #1D9BF0', borderRadius: WIN.r + 10 + 'px', boxSizing: 'border-box', display: 'none'});
+  AP.winDots = [[0, 0], [1, 0], [0, 1], [1, 1]].map(([u, v]) => box(aipage, WIN.x - 14 + u * (WIN.w + 28) - 13, WIN.y - 14 + v * (WIN.h + 28) - 13,
+    {width: '26px', height: '26px', background: '#fff', border: '5px solid #1D9BF0', boxSizing: 'border-box', display: 'none'}));
+
+  AP.greetBox = box(aipage, c.x + 2, AI.greetingY, {font: `700 26px/36px ${SERIF_FONT}`, color: AI.greet, whiteSpace: 'nowrap'});
+  AP.greet = chars(AP.greetBox, [{t: COPY.greeting}], 30, F.aiIn, 5);
+  AP.wrap = box(aipage, c.x, c.y, {width: c.w + 'px'});
+  AP.box = box(AP.wrap, 0, 0, {width: c.w + 'px', height: c.h + 'px', background: AI.panel, borderRadius: '20px', border: `1px solid ${AI.line}`, boxSizing: 'border-box',
+    boxShadow: '0 4px 18px rgba(40,34,24,.08)', transformOrigin: '50% 30%'});
+  AP.chip = box(AP.box, AI.chip.x - 1, AI.chip.y - 1, {width: AI.chip.w + 'px', height: AI.chip.h + 'px', borderRadius: '10px', overflow: 'hidden', border: `1px solid ${AI.line}`, display: 'none'});
+  AP.chipImg = el(AP.chip, 'img', {left: 0, top: 0, width: '100%', height: '100%', objectFit: 'cover'});
+  box(AP.chip, AI.chip.w - 40, AI.chip.h - 24, {padding: '1px 6px', borderRadius: '6px', background: 'rgba(0,0,0,.6)', color: '#fff', font: `600 11px/16px ${UI_FONT}`}, '0:20');
+
+  AP.textRow = box(AP.box, 17, 17, {font: `400 17px/24px ${UI_FONT}`, color: AI.ink, whiteSpace: 'nowrap', display: 'flex', alignItems: 'center'});
+  AP.typed = Array.from(COPY.prompt).map((ch) => { const s = el(AP.textRow, 'span', {position: 'static', display: 'none', whiteSpace: 'pre'}); s.textContent = ch; return s; });
+  AP.caret = el(AP.textRow, 'span', {position: 'static', display: 'inline-block', width: '1.6px', height: '21px', background: AI.ink, marginLeft: '1px'});
+  AP.ph = textBox(AP.box, 18, 17, {font: `400 17px/24px ${UI_FONT}`, color: AI.sub, whiteSpace: 'nowrap'}, COPY.placeholder);
+  AP.plus = box(AP.box, 13, 0, {width: '34px', height: '34px', borderRadius: '10px', border: `1px solid ${AI.line}`, boxSizing: 'border-box', display: 'grid', placeItems: 'center'}, `<div class="flow">${ICON.plus}</div>`);
+  AP.send = box(AP.box, c.w - 12 - B, 0, {width: B + 'px', height: B + 'px', borderRadius: Math.round(B * 0.28) + 'px', background: AI.accentOff, display: 'grid', placeItems: 'center'});
+  AP.sendIcon = el(AP.send, 'div', {position: 'static', display: 'grid', placeItems: 'center'}, ICON.up);
+  AP.stopIcon = el(AP.send, 'div', {position: 'static', width: '13px', height: '13px', borderRadius: '3px', background: '#fff', display: 'none'});
+
+  AP.uChip = box(aipage, V.chip.x, V.chip.y, {width: AI.chip.w + 'px', height: AI.chip.h + 'px', borderRadius: '10px', overflow: 'hidden', border: `1px solid ${AI.line}`, boxSizing: 'border-box', display: 'none'});
+  AP.uChipImg = el(AP.uChip, 'img', {left: 0, top: 0, width: '100%', height: '100%', objectFit: 'cover'});
+  box(AP.uChip, AI.chip.w - 40, AI.chip.h - 24, {padding: '1px 6px', borderRadius: '6px', background: 'rgba(0,0,0,.6)', color: '#fff', font: `600 11px/16px ${UI_FONT}`}, '0:20');
+  AP.b1 = {el: box(aipage, 0, V.bubble.y, {height: V.bubble.h + 'px', display: 'none', transformOrigin: '14px 9px'})};
+  AP.b1.bg = box(AP.b1.el, 0, 0, {width: '100%', height: '100%', borderRadius: '14px', background: AI.bubble});
+  AP.b1.text = textBox(AP.b1.el, 14, 9, {font: `400 16px/24px ${UI_FONT}`, color: AI.ink, whiteSpace: 'nowrap'}, COPY.prompt);
+
+  const VC = RIG.VCARD;
+  AP.reply3 = box(aipage, VC.x, VC.y - 40, {font: `400 16px/24px ${UI_FONT}`, color: AI.ink, whiteSpace: 'nowrap', display: 'none'});
+  AP.r3Chars = Array.from(COPY.final.reply).map((ch) => { const e = el(AP.reply3, 'span', {position: 'static'}); e.textContent = ch; return e; });
+  AP.vcard = box(aipage, VC.x, VC.y, {width: VC.w + 'px', height: VC.h + 'px', borderRadius: '14px', overflow: 'hidden', background: '#000', display: 'none', transformOrigin: '0% 0%',
+    boxShadow: '0 10px 30px rgba(40,34,24,.18), 0 0 0 1px rgba(40,34,24,.1)'});
+  AP.vimg = el(AP.vcard, 'img', {left: 0, top: 0, width: '100%', height: '100%', objectFit: 'cover'}); AP.vimg.src = VIDEO_PLACEHOLDERS.zh;
+  box(AP.vcard, VC.w / 2 - 30, VC.h / 2 - 30, {width: '60px', height: '60px', borderRadius: '50%', background: 'rgba(15,15,15,.55)', border: '2px solid rgba(255,255,255,.9)', boxSizing: 'border-box', display: 'grid', placeItems: 'center'},
+    `<div class="flow" style="margin-left:4px">${ICON.play(26)}</div>`);
+  box(AP.vcard, 10, VC.h - 30, {padding: '1px 6px', borderRadius: '5px', background: 'rgba(0,0,0,.6)', color: '#fff', font: `600 12px/18px ${UI_FONT}`}, '0:20');
+})();
+
+function drawAI(f) {
+  const c = AI.composer, V = CONV, grow = RIG.composerGrow(f), h = c.h + c.grow * grow, B = AI.send;
+  const final = f >= F.appUp, wx = final ? null : RIG.winXf(f);
+  aipage.style.transform = final ? T(0, RIG.appDY(f)) : wx ? `${T(wx.d[0] + wx.pivot[0], wx.d[1] + wx.pivot[1])} rotate(${wx.ang.toFixed(3)}deg) scale(${wx.sc.toFixed(5)}) ${T(-wx.pivot[0], -wx.pivot[1])}` : T(0, RIG.aiOffset(f));
+  AP.wrap.style.top = (final ? 840 : c.y) + 'px';
+  AP.wrap.style.translate = final ? '' : `0 ${RIG.composerDrop(f).toFixed(3)}px`;
+  AP.reply3.style.display = final && f >= REPLY3_T[0] ? 'block' : 'none';
+  AP.r3Chars.forEach((e, i) => (e.style.opacity = f < REPLY3_T[i] ? 0 : clamp(0.25 + (0.75 * (f - REPLY3_T[i] + 1)) / 4)));
+  AP.vcard.style.display = final && f >= F.vcard ? 'block' : 'none';
+  if (final && f >= F.vcard) { const k = springTo(f, F.vcard, 0.7, 1, 3.2, 0.5); AP.vcard.style.transform = `${T(0, 30 * (1 - k))} scale(${k.toFixed(4)})`; AP.vcard.style.opacity = clamp((f - F.vcard + 1) / 3); }
+  AP.win.style.display = f >= F.cutC ? 'block' : 'none';
+  AP.winSel.style.display = wx ? 'block' : 'none';
+  AP.winDots.forEach((d) => (d.style.display = wx ? 'block' : 'none'));
+  if (wx) { AP.winSel.style.opacity = wx.sel; AP.winDots.forEach((d) => (d.style.opacity = wx.sel)); }
+  AP.greet.update(f);
+  const gOut = clamp((f - F.fly0) / 9);
+  AP.greetBox.style.opacity = 1 - gOut; AP.greetBox.style.transform = T(0, -12 * gOut * gOut);
+  enter(AP.wrap, f, F.aiIn + 3, 60, {blur: 0.1, dy: 0.35, s0: 0.86, origin: '50% 50%'});
+  AP.box.style.height = h + 'px';
+  AP.box.style.transform = `scale(${RIG.composerBounce(f)})`;
+  const sent = f >= F.fly0, focused = f >= F.click2 && !sent;
+  AP.box.style.borderColor = focused ? AI.lineFocus : AI.line;
+  AP.chip.style.display = f >= RIG.CHIP_AT() && !sent ? 'block' : 'none';
+  if (f >= RIG.CHIP_AT()) setSrc(AP.chipImg, VIDEO_PLACEHOLDERS.en);
+
+  let n = 0, last = F.click2;
+  KEYS.forEach((k, i) => { const on = f >= k && !sent; AP.typed[i].style.display = on ? 'inline' : 'none'; if (on) { n++; last = k; AP.typed[i].style.opacity = clamp(0.3 + (0.7 * (f - k + 1)) / 2.5); } });
+  AP.ph.textContent = sent ? COPY.replyHint : COPY.placeholder;
+  AP.ph.style.display = n > 0 ? 'none' : 'block';
+  const rowDY = c.grow * grow;
+  AP.textRow.style.transform = T(0, rowDY); AP.ph.style.transform = T(0, rowDY);
+  AP.caret.style.visibility = focused && (f - last) % 30 < 16 ? 'visible' : 'hidden';
+  AP.plus.style.transform = T(0, h - 12 - 34); AP.send.style.top = '0px';
+  const sb = RIG.sendBtn(f);
+  AP.send.style.background = sb.pressed ? AI.accentPress : sb.stop ? AI.ink : n > 0 ? AI.accent : AI.accentOff;
+  AP.send.style.transform = `${T(0, h - 12 - B)} scale(${sb.sc.toFixed(4)})`;
+  AP.sendIcon.style.display = sb.stop ? 'none' : 'grid'; AP.stopIcon.style.display = sb.stop ? 'block' : 'none';
+  AP.sendIcon.style.transform = `rotate(${sb.rot.toFixed(3)}deg)`;
+
+  AP.uChip.style.display = AP.b1.el.style.display = sent ? 'block' : 'none';
+  if (sent) {
+    setSrc(AP.uChipImg, VIDEO_PLACEHOLDERS.en);
+    const k = RIG.flyK(f), k2 = RIG.flyK(f - 2), g0 = c.grow * RIG.composerGrow(F.fly0), o = AP.b1;
+    AP.uChip.style.transform = T((c.x + AI.chip.x - 1 - V.chip.x) * (1 - k), (c.y + AI.chip.y - 1 - V.chip.y) * (1 - k));
+    const w = o.w || (o.w = o.text.offsetWidth + 28), x = V.right - w;
+    Object.assign(o.el.style, {width: w + 'px', left: x + 'px', transform: `${T((c.x + 17 - (x + 14)) * (1 - k2), (c.y + 17 + g0 - (V.bubble.y + 9)) * (1 - k2))} scale(${lerp(17 / 16, 1, k2).toFixed(4)})`});
+    o.bg.style.opacity = clamp(k2 * 1.6);
+  }
+}
+
+const canvasLayer = box(world, 0, 0, {display: 'none'});
+const CI = {};
+const SWAP_FONT = `700 {S}px/{L}px ${UI_FONT}`;
+function swapParts(o, zh, size) {
+  o.zh = box(o.el, 0, 0, {font: SWAP_FONT.replace('{S}', size).replace('{L}', Math.round(size * 1.2)), color: '#121212', whiteSpace: 'nowrap', display: 'none'}, zh);
+  o.block = box(o.el, 0, Math.round(size * 0.14), {width: size * 0.42 + 'px', height: Math.round(size * 0.98) + 'px', background: '#121212', display: 'none'});
+}
+const itemEl = (id, img, text, size, color, under, zh) => {
+  const o = {};
+  o.el = box(under ? canvasUnder : canvasLayer, 0, 0, {display: 'none', transformOrigin: '50% 50%'});
+  if (img) { o.img = el(o.el, 'img', {left: 0, top: 0, width: '100%', height: '100%'}); o.img.src = propImage(img); }
+  else o.txt = box(o.el, 0, 0, {font: `700 ${size}px/${Math.round(size * 1.2)}px Inter, sans-serif`, color: '#121212', whiteSpace: 'nowrap', letterSpacing: '-0.01em'}, text);
+  if (zh) swapParts(o, zh, size);
+  o.sel = box(o.el, -8, -8, {border: `3px solid ${color}`, boxSizing: 'border-box', display: 'none'});
+  o.handles = [0, 1, 2, 3].map(() => box(o.el, 0, 0, {width: '12px', height: '12px', background: '#fff', border: `2.5px solid ${color}`, boxSizing: 'border-box', display: 'none'}));
+  o.anchor = box(o.el, 0, 0, {width: '26px', height: '26px', display: 'none'},
+    `<svg width="26" height="26" viewBox="0 0 26 26" style="display:block"><circle cx="13" cy="13" r="6" fill="none" stroke="${color}" stroke-width="2.4"/><path d="M13 1v24M1 13h24" stroke="${color}" stroke-width="2.4"/></svg>`);
+  return (CI[id] = o);
+};
+for (const x of RIG.ITEMS()) itemEl(x.it.id, x.it.img || (x.it.ring !== undefined ? CANVAS.ring.icons[x.it.ring][0] : null), x.it.text !== undefined ? COPY.words[x.it.text] : null, x.it.size, x.color || '#2F6FDE',
+  x.it.ring !== undefined || x.static, x.it.id === 'curio' ? COPY.swap.curiosity : null);
+for (const w of RIG.WORDS().slice(1)) itemEl(w.id, null, w.en, w.size, '#121212', false, w.zh);
+
+function drawSwap(o, sw, size) {
+  if (!sw || sw.p <= 0) { if (o.zh) { o.zh.style.display = 'none'; o.block.style.display = 'none'; o.txt.style.clipPath = ''; } return; }
+  if (!o.zhW) { o.zh.style.display = 'block'; o.enW = o.txt.offsetWidth; o.zhW = o.zh.offsetWidth; }
+  const enW = o.enW, zhW = o.zhW, bw = size * 0.42;
+  const x = sw.p <= 1 ? enW * (1 - sw.p) : zhW * (sw.p - 1);
+  o.txt.style.clipPath = `inset(-20% ${Math.max(0, enW - Math.min(x, enW)).toFixed(2)}px -20% 0)`;
+  o.txt.style.visibility = sw.p >= 1 ? 'hidden' : 'visible';
+  o.zh.style.display = sw.p > 1 ? 'block' : 'none';
+  o.zh.style.clipPath = `inset(-20% ${Math.max(0, zhW - x).toFixed(2)}px -20% 0)`;
+  const caret = sw.done, w = caret ? size * 0.07 : bw;
+  Object.assign(o.block.style, {display: !caret || sw.caret ? 'block' : 'none', width: w + 'px', transform: T(x + (caret ? size * 0.06 : 0), 0)});
+}
+
+const DECO = {};
+const selBox = (parent, color) => ({box: box(parent, 0, 0, {border: `2.5px solid ${color}`, boxSizing: 'border-box', display: 'none'}),
+  handles: [0, 1, 2, 3].map(() => box(parent, 0, 0, {width: '11px', height: '11px', background: '#fff', border: `2.5px solid ${color}`, boxSizing: 'border-box', display: 'none'}))});
+function showSel(s, x0, y0, w, h, op, pad = 0) {
+  const on = op > 0.01;
+  s.box.style.display = on ? 'block' : 'none';
+  s.handles.forEach((e) => (e.style.display = on ? 'block' : 'none'));
+  if (!on) return;
+  Object.assign(s.box.style, {left: x0 - pad + 'px', top: y0 - pad + 'px', width: w + 2 * pad + 'px', height: h + 2 * pad + 'px', opacity: op});
+  [[x0 - pad, y0 - pad], [x0 + w + pad, y0 - pad], [x0 - pad, y0 + h + pad], [x0 + w + pad, y0 + h + pad]].forEach(([hx, hy], i) => Object.assign(s.handles[i].style, {left: hx - 5.5 + 'px', top: hy - 5.5 + 'px', opacity: op}));
+}
+const bigText = (size) => `700 ${size}px/${Math.round(size * 1.2)}px Inter, ${UI_FONT}`;
+const noteText = (size) => `500 ${size}px/${Math.round(size * 1.3)}px ${UI_FONT}`;
+for (const x of RIG.DECOR()) {
+  const d = x.d, o = {x}, layer = x.under ? canvasUnder : canvasLayer;
+  o.el = box(layer, 0, 0, {display: 'none', transformOrigin: '50% 50%'});
+  if (d.img) { o.img = el(o.el, 'img', {left: 0, top: 0, width: '100%', height: '100%'}); o.img.src = propImage(d.img); }
+  if (x.kind === 'static' && d.text) o.txt = box(o.el, 0, 0, {font: bigText(d.size), color: '#121212', whiteSpace: 'nowrap', letterSpacing: '-0.01em'}, d.text);
+  if (x.kind === 'drag') o.sel = selBox(o.el, x.color);
+  if (x.kind === 'draw') { o.shape = box(o.el, 0, 0, {background: d.fill || '#E6E3DC', borderRadius: d.shape === 'ellipse' ? '50%' : '12px'}); o.sel = selBox(o.el, x.color); }
+  if (x.kind === 'type') {
+    const small = d.size <= 24;
+    o.row = box(o.el, 0, 0, {font: small ? noteText(d.size) : bigText(d.size), color: small ? '#5E5A51' : '#121212', whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', letterSpacing: small ? '0' : '-0.01em'});
+    o.chars = Array.from(d.text).map((ch) => { const e = el(o.row, 'span', {position: 'static', display: 'none', whiteSpace: 'pre'}); e.textContent = ch; return e; });
+    o.caret = el(o.row, 'span', {position: 'static', display: 'inline-block', width: Math.max(1.6, d.size * 0.06) + 'px', height: d.size * 1.1 + 'px', background: x.color, marginLeft: '1px'});
+  }
+  DECO[x.id] = o;
+}
+function drawDecor(f) {
+  const list = RIG.decor(f), on = new Set(list.map((y) => y.id));
+  for (const id in DECO) if (!on.has(id)) DECO[id].el.style.display = 'none';
+  for (const y of list) {
+    const o = DECO[y.id], x = y.x;
+    o.el.style.display = 'block';
+    if (x.kind === 'static' || x.kind === 'drag') {
+      Object.assign(o.el.style, {width: x.w + 'px', height: x.h + 'px', transform: `${T(y.c[0] - x.w / 2, y.c[1] - x.h / 2)} rotate(${(y.ang || 0).toFixed(3)}deg)`});
+      if (o.sel) showSel(o.sel, 0, 0, x.w, x.h, y.sel, 7);
+    } else if (x.kind === 'draw') {
+      const x0 = Math.min(y.p0[0], y.p1[0]), y0 = Math.min(y.p0[1], y.p1[1]), w = Math.abs(y.p1[0] - y.p0[0]), h = Math.abs(y.p1[1] - y.p0[1]);
+      o.el.style.transform = T(x0, y0);
+      Object.assign(o.shape.style, {width: w + 'px', height: h + 'px'});
+      showSel(o.sel, 0, 0, w, h, y.sel);
+    } else if (x.kind === 'type') {
+      o.el.style.transform = T(x.pos[0], x.pos[1]);
+      o.chars.forEach((e, k) => (e.style.display = k < y.n ? 'inline' : 'none'));
+      o.caret.style.visibility = y.caret && (y.n < o.chars.length || (f - x.t1) % 30 < 16) ? 'visible' : 'hidden';
+    }
+  }
+}
+
+const CMT = CANVAS.comment;
+const cmt = (() => {
+  const o = {};
+  o.pin = box(canvasLayer, 0, 0, {width: CMT.pin + 'px', height: CMT.pin + 'px', borderRadius: '50% 50% 50% 0', background: '#fff', border: '3px solid #2F6FDE', boxSizing: 'border-box', display: 'none',
+    transformOrigin: '0 100%', boxShadow: '0 3px 10px rgba(30,40,80,.18)'});
+  textBox(o.pin, 0, 0, {width: '100%', height: '100%', display: 'grid', placeItems: 'center', font: `700 15px/18px ${UI_FONT}`, color: '#2F6FDE'}, COPY.comment.pin);
+  o.card = box(canvasLayer, 0, 0, {background: '#fff', borderRadius: '14px', boxShadow: '0 8px 28px rgba(30,28,24,.14), 0 0 0 1px rgba(30,28,24,.06)', overflow: 'hidden', display: 'none', transformOrigin: '0% 50%'});
+  o.head = textBox(o.card, 16, 12, {font: `400 12.5px/16px ${UI_FONT}`, color: '#9A968C', whiteSpace: 'nowrap'}, COPY.comment.head);
+  o.row = box(o.card, 16, 38, {font: `400 16px/22px ${UI_FONT}`, color: '#1F1E1B', whiteSpace: 'nowrap', display: 'flex', alignItems: 'center'});
+  o.ph = el(o.row, 'span', {position: 'static', color: '#A3A097'});
+  o.ph.textContent = COPY.comment.placeholder;
+  o.chars = Array.from(COPY.comment.first).map((ch) => { const e = el(o.row, 'span', {position: 'static', display: 'none', whiteSpace: 'pre'}); e.textContent = ch; return e; });
+  o.caret = el(o.row, 'span', {position: 'static', display: 'inline-block', width: '1.6px', height: '19px', background: '#1F1E1B', marginLeft: '1px'});
+  o.check = box(o.card, 16, 78, {display: 'flex', alignItems: 'center', gap: '8px', font: `400 14px/20px ${UI_FONT}`, color: '#1F1E1B', whiteSpace: 'nowrap'},
+    `<span style="position:static;width:16px;height:16px;border-radius:4px;background:#2F6FDE;display:inline-grid;place-items:center">${svg(12, '<path d="M5 12.5l4.2 4L19 7"/>', '#fff', 'none', 3)}</span><span style="position:static"></span>`);
+  o.check.lastElementChild.textContent = COPY.comment.check;
+  o.mic = box(o.card, CMT.w - 16 - 26, 76, {width: '26px', height: '26px', display: 'grid', placeItems: 'center'}, svg(18, '<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/>', '#1F1E1B', 'none', 1.8));
+  o.go = box(o.card, CMT.w - 16 - 26, 76, {width: '26px', height: '26px', borderRadius: '8px', display: 'none', placeItems: 'center', background: '#2F6FDE'}, svg(16, '<path d="M12 19V5M6 11l6-6 6 6"/>', '#fff', 'none', 2.6));
+  return o;
+})();
+function drawComments(f) {
+  const c = RIG.comments(f)[0], o = cmt;
+  o.pin.style.display = o.card.style.display = c ? 'block' : 'none';
+  if (!c) return;
+  const [tx, ty] = c.at, P = CMT.pin;
+  o.pin.style.transform = `${T(tx, ty - P)} scale(${Math.max(0, c.pin).toFixed(4)})`;
+
+  const g = c.grow, w = lerp(P, CMT.w, clamp(g * 1.05)), h = lerp(P, CMT.h, clamp((g - 0.08) * 1.1));
+  Object.assign(o.card.style, {width: w + 'px', height: Math.max(P, h) + 'px', borderRadius: lerp(P / 2, 14, clamp(g * 1.4)) + 'px', transform: `${T(c.card.x, c.card.y)} scale(${Math.max(0, c.out).toFixed(4)})`, opacity: clamp(g * 4) * clamp(c.out * 3)});
+  o.head.style.opacity = c.head;
+  o.row.style.opacity = c.ph; o.check.style.opacity = c.row; o.mic.style.opacity = c.row;
+  o.row.style.clipPath = `inset(0 ${(100 * (1 - c.ph)).toFixed(1)}% 0 0)`;
+  o.ph.style.display = c.typed ? 'none' : 'inline';
+  o.chars.forEach((e, k) => (e.style.display = k < c.typed ? 'inline' : 'none'));
+  o.caret.style.visibility = c.caret && c.ph >= 1 ? 'visible' : 'hidden';
+  o.mic.style.display = c.typed ? 'none' : 'grid'; o.go.style.display = c.typed ? 'grid' : 'none';
+  o.go.style.transform = `scale(${c.sent ? 1 - 0.14 * Math.sin(Math.PI * c.sentK) : 1})`;
+  o.go.style.background = c.sent ? '#1F4FB0' : '#2F6FDE';
+}
+function drawCanvas(f) {
+  const on = f >= F.cutC;
+  canvasLayer.style.display = canvasUnder.style.display = on ? 'block' : 'none';
+  if (!on) return;
+  const list = RIG.canvasItems(f), shown = new Set(list.map((x) => x.id));
+  for (const id in CI) if (!shown.has(id)) CI[id].el.style.display = 'none';
+  for (const x of list) {
+    const o = CI[x.id];
+    if (x.word) {
+      Object.assign(o.el.style, {display: 'block', width: '10px', height: Math.round(x.word.size * 1.2) + 'px', transform: T(x.c[0], x.c[1] - x.word.size * 0.6)});
+      drawSwap(o, x.swap, x.word.size); continue;
+    }
+    if (!o.w) { o.w = o.img ? x.w : Math.max(10, o.txt.offsetWidth || x.w); o.h = x.h; }
+    const w = o.w, h = o.h;
+    Object.assign(o.el.style, {display: 'block', width: w + 'px', height: h + 'px', transform: `${T(x.c[0] - w / 2, x.c[1] - h / 2)} rotate(${x.ang.toFixed(3)}deg)`});
+    if (o.zh) drawSwap(o, x.swap, x.it.size);
+    o.sel.style.display = x.sel > 0.01 ? 'block' : 'none';
+    Object.assign(o.sel.style, {width: w + 16 + 'px', height: h + 16 + 'px', opacity: x.sel, borderColor: x.color});
+    [[-8, -8], [w + 8, -8], [-8, h + 8], [w + 8, h + 8]].forEach(([hx, hy], i) => Object.assign(o.handles[i].style, {display: x.sel > 0.01 && x.anchor ? 'block' : 'none', left: hx - 6 + 'px', top: hy - 6 + 'px', opacity: x.sel}));
+    o.anchor.style.display = x.anchor ? 'block' : 'none';
+    if (x.anchor) Object.assign(o.anchor.style, {left: w / 2 - 13 + 'px', top: h / 2 - 13 + 'px', opacity: x.sel});
+  }
+  drawDecor(f);
+  drawComments(f);
+}
+
+const playerEl = document.getElementById('player'), pvid = document.getElementById('pvid');
+function drawPlayer(f) {
+  const p = RIG.player(f);
+  playerEl.style.display = p ? 'block' : 'none';
+  if (!p) return;
+  const k = SW / W, [x, y, w, h] = p.rect.map((v) => v * k);
+  playerEl.style.background = `rgba(0,0,0,${p.black.toFixed(3)})`;
+  Object.assign(pvid.style, {width: w + 'px', height: h + 'px', transform: T(x, y), borderRadius: (14 * (1 - p.k) * k * (W / 560)).toFixed(2) + 'px'});
+  setSrc(pvid, VIDEO_PLACEHOLDERS.zh);
+}
+
+const outroEl = document.getElementById('outro'), oin = document.getElementById('oin');
+const CR = COPY.credits, OU = RIG.OUTRO, PH = (W * 3) / 4, PY = (H - PH) / 2;
+const signBg = box(oin, 0, PY, {width: W + 'px', height: PH + 'px', background: 'linear-gradient(#E1E1E1, #C9C9CB)', display: 'none'});
+
+const signLine = box(oin, 0, PY + PH * 0.47 - 40, {width: W + 'px', height: '80px', display: 'flex', justifyContent: 'center', alignItems: 'baseline', gap: '26px', whiteSpace: 'nowrap', color: '#151515'});
+const titleText = el(signLine, 'div', {position: 'relative', font: `700 60px/80px ${SERIF_FONT}`, letterSpacing: '0.06em'});
+const signGlyphs = Array.from(COPY.endingTitle, ch => {
+  const g = el(titleText, 'span', {position: 'relative', display: 'inline-block', whiteSpace: 'pre', transformOrigin: '50% 55%'});
+  g.textContent = ch;
+  return {g};
+});
+
+const CZ = RIG.CZ, GS = CANVAS.gridStep * CZ, GL = 2 * CZ;
+const credSheet = box(oin, 0, 0, {width: W + 'px', height: '2600px', background: CANVAS.bg, display: 'none',
+  backgroundImage: `linear-gradient(${CANVAS.grid} ${GL}px, transparent ${GL}px), linear-gradient(90deg, ${CANVAS.grid} ${GL}px, transparent ${GL}px)`, backgroundSize: `${GS}px ${GS}px`, backgroundPosition: `${-GL / 2}px ${2600 % GS - GL / 2}px`,
+  boxShadow: '0 18px 50px rgba(40,34,24,.28), 0 2px 8px rgba(40,34,24,.14)'});
+const credTab = box(oin, 0, 0, {width: OU.tab.w + 'px', height: OU.tab.h + 'px', background: CANVAS.bg, borderRadius: '0 0 30px 30px', boxShadow: '0 10px 24px rgba(40,34,24,.2), 0 2px 5px rgba(40,34,24,.12)', display: 'none', placeItems: 'center'},
+  `<div class="flow">${svg(52, '<path d="M6 9.5l6 6 6-6"/>', '#8B887F', 'none', 2.4)}</div>`);
+el(credTab, 'div', {left: '-8px', top: '-12px', width: OU.tab.w + 16 + 'px', height: '13px', background: CANVAS.bg});
+const credBox = box(oin, 0, 0, {width: W + 'px', height: H + 'px', display: 'none'});
+textBox(credBox, 96, 150, {font: `700 ${56 * CZ}px/${Math.round(56 * CZ * 1.2)}px ${UI_FONT}`, color: '#121212', whiteSpace: 'nowrap'}, CR.title);
+const oSel = (parent, color, pad = 14) => { const o = {box: box(parent, 0, 0, {border: `${2.5 * CZ * 0.9}px solid ${color}`, boxSizing: 'border-box'}), hs: [0, 1, 2, 3].map(() => box(parent, 0, 0, {width: '24px', height: '24px', background: '#fff', border: `5px solid ${color}`, boxSizing: 'border-box'})), pad}; return o; };
+function showOSel(o, w, h, op) {
+  const p = o.pad, on = op > 0.01;
+  o.box.style.display = on ? 'block' : 'none'; o.hs.forEach((e) => (e.style.display = on ? 'block' : 'none'));
+  if (!on) return;
+  Object.assign(o.box.style, {left: -p + 'px', top: -p + 'px', width: w + 2 * p + 'px', height: h + 2 * p + 'px', opacity: op});
+  [[-p, -p], [w + p, -p], [-p, h + p], [w + p, h + p]].forEach(([x, y], i) => Object.assign(o.hs[i].style, {left: x - 12 + 'px', top: y - 12 + 'px', opacity: op}));
+}
+const credGroups = CR.items.map(([name, desc]) => {
+  const g = box(credBox, 0, 0, {display: 'none'});
+  const nm = box(g, 0, 0, {font: `700 54px/66px ${UI_FONT}`, color: '#121212', whiteSpace: 'nowrap', letterSpacing: '-0.01em', display: 'flex', alignItems: 'center'});
+  const chars = Array.from(name).map((ch) => { const e = el(nm, 'span', {position: 'static', whiteSpace: 'pre'}); e.textContent = ch; return e; });
+  const caret = el(nm, 'span', {position: 'static', display: 'inline-block', width: '4px', height: '56px', marginLeft: '3px', background: '#121212'});
+  const ds = textBox(g, 2, 78, {font: `500 32px/44px ${UI_FONT}`, color: '#5E5A51', whiteSpace: 'nowrap'}, desc);
+  return {g, nm, chars, caret, ds, name, desc, sel: null};
+});
+const credPics = [], credCurs = {};
+function credCursor(c) {
+  if (credCurs[c.id]) return credCurs[c.id];
+  const o = {im: el(credBox, 'img', {width: c.size + 'px', height: c.size + 'px', transformOrigin: '0 0', filter: `drop-shadow(0 ${0.6 * CZ}px ${0.9 * CZ}px rgba(0,0,0,.3))`}),
+    tag: box(credBox, 0, 0, {padding: `${CANVAS.tagSize * CZ * 0.2}px ${CANVAS.tagSize * CZ * 0.5}px`, borderRadius: CANVAS.tagSize * CZ * 0.35 + 'px', background: c.color, color: '#fff',
+      font: `600 ${CANVAS.tagSize * CZ}px/${CANVAS.tagSize * CZ * 1.3}px ${UI_FONT}`, whiteSpace: 'nowrap', boxShadow: '0 2px 6px rgba(0,0,0,.15)'}, c.tag)};
+  o.im.src = tinted(c.color);
+  return (credCurs[c.id] = o);
+}
+const oCur = {arrow: el(oin, 'img', {width: OU.cursor + 'px', height: OU.cursor + 'px', display: 'none', transformOrigin: '0 0'}), hand: el(oin, 'img', {width: OU.cursor + 'px', height: OU.cursor + 'px', display: 'none', transformOrigin: '0 0'})};
+oCur.arrow.src = 'cursor-arrow.svg'; oCur.hand.src = 'cursor-grab.svg';
+for (const im of [oCur.arrow, oCur.hand]) im.style.filter = `drop-shadow(0 ${0.6 * OU.cursor / 30}px ${0.9 * OU.cursor / 30}px rgba(0,0,0,.3))`;
+let signLaid = false;
+function drawOutro(f) {
+  const on = f >= F.burst0;
+  outroEl.style.display = on ? 'block' : 'none';
+  if (!on) return;
+  oin.style.transform = `scale(${(SW / W).toFixed(6)})`;
+
+  signBg.style.display = 'block';
+  if (!signLaid) { fitText(titleText, COPY.endingTitle, W - 120); signLaid = true; for (const s of signGlyphs) { s.cx = signLine.offsetLeft + titleText.offsetLeft + s.g.offsetLeft + s.g.offsetWidth / 2; s.cy = signLine.offsetTop + titleText.offsetTop + s.g.offsetTop + s.g.offsetHeight * 0.55; } }
+  const sg = RIG.sign(f);
+  signGlyphs.forEach((s, i) => { const q = sg[i], dx = (OU.blob[0] - s.cx) * (1 - q.k), dy = (OU.blob[1] - s.cy) * (1 - q.k);
+    s.g.style.transform = `translate(${dx.toFixed(2)}px, ${dy.toFixed(2)}px) rotate(${q.rot.toFixed(2)}deg) scale(${q.sc.toFixed(4)})`; });
+
+  const e = RIG.credEdge(f), cr = RIG.credits(f), shown = !!cr;
+  credSheet.style.display = credBox.style.display = shown ? 'block' : 'none';
+  credTab.style.display = shown ? 'grid' : 'none';
+  if (shown) {
+    credSheet.style.transform = T(0, e - 2600);
+    credTab.style.transform = T(OU.tab.x - OU.tab.w / 2, e);
+    credBox.style.transform = T(0, cr.dy);
+    const on2 = new Set();
+    for (const it of cr.items) {
+      const o = credGroups[it.g]; on2.add(it.g);
+      o.g.style.display = 'block';
+      if (!o.w) { fitText(o.nm, o.name, W - 180); fitText(o.ds, o.desc, W - 178); o.w = Math.max(o.nm.offsetWidth, o.ds.offsetWidth + 2); o.h = 126; o.g.style.width = o.w + 'px'; o.g.style.height = o.h + 'px'; }
+      const pv = it.pivot || [0, 0];
+      Object.assign(o.g.style, {transformOrigin: `${pv[0]}px ${pv[1]}px`, transform: `${T(it.pos[0], it.pos[1])} rotate(${it.ang.toFixed(3)}deg)`});
+      if (!o.sel && it.sel > 0) o.sel = oSel(o.g, it.color);
+      if (o.sel) showOSel(o.sel, o.w, o.h, it.sel);
+      const typing = it.typed !== undefined;
+      o.chars.forEach((c, k) => (c.style.display = !typing || k < it.typed ? 'inline' : 'none'));
+      o.caret.style.display = typing && it.caret ? 'inline-block' : 'none';
+      o.ds.style.opacity = typing ? it.desc : 1;
+    }
+    credGroups.forEach((o, i) => { if (!on2.has(i)) o.g.style.display = 'none'; });
+    const onP = new Set(cr.pics.map((p) => p.i));
+    credPics.forEach((o, i) => { if (o && !onP.has(i)) o.el.style.display = 'none'; });
+    for (const p of cr.pics) {
+      let o = credPics[p.i];
+      if (!o) { o = credPics[p.i] = {el: box(credBox, 0, 0, {transformOrigin: '50% 50%'})}; o.im = el(o.el, 'img', {left: 0, top: 0, width: '100%', height: '100%'}); o.im.src = propImage(p.img); o.w = p.w || p.h * (o.im.naturalWidth / o.im.naturalHeight || 1); }
+      const w = p.w || o.w, h = p.h;
+      Object.assign(o.el.style, {display: 'block', width: w + 'px', height: h + 'px', transform: `${T(p.c[0] - w / 2, p.c[1] - h / 2)} rotate(${p.ang.toFixed(3)}deg)`});
+      if (p.sel > 0 && !o.sel) o.sel = oSel(o.el, p.color, 10);
+      if (o.sel) showOSel(o.sel, w, h, p.sel);
+    }
+    const onC = new Set(cr.curs.map((c) => c.id));
+    for (const id in credCurs) if (!onC.has(id)) { credCurs[id].im.style.display = 'none'; credCurs[id].tag.style.display = 'none'; }
+    for (const c of cr.curs) {
+      const o = credCursor({...c, size: cr.size}), k = cr.size / 512, [hx, hy] = HOT.arrow.map((v) => v * k), [bx, by] = BODY.map((v) => v * k);
+      o.im.style.display = o.tag.style.display = 'block';
+      o.im.style.transform = `${T(c.pos[0] - hx, c.pos[1] - hy)} ${T(bx, by)} rotate(${c.tilt.toFixed(3)}deg) ${T(hx - bx, hy - by)} scale(${c.sc.toFixed(4)}) ${T(-hx, -hy)}`;
+      o.tag.style.transform = T(c.pos[0] + cr.size * 0.5, c.pos[1] + cr.size * 0.72);
+    }
+  }
+
+  const c = RIG.outroCursor(f);
+  oCur.arrow.style.display = c && c.kind === 'arrow' ? 'block' : 'none';
+  oCur.hand.style.display = c && c.kind === 'hand' ? 'block' : 'none';
+  if (c) {
+    const k = c.size / 512, [hx, hy] = HOT[c.kind].map((v) => v * k), [bx, by] = c.kind === 'arrow' ? BODY.map((v) => v * k) : [hx, hy];
+    oCur[c.kind].style.transform = `${T(c.pos[0] - hx, c.pos[1] - hy)} ${T(bx, by)} rotate(${c.tilt.toFixed(3)}deg) ${T(hx - bx, hy - by)} scale(${c.sc.toFixed(4)}) ${T(-hx, -hy)}`;
+  }
+}
+
+const heldEl = box(world, 0, 0, {display: 'none'});
+const heldImg = el(heldEl, 'img', {left: 0, top: 0, width: '100%', height: '100%', objectFit: 'cover'});
+const heldDash = box(heldEl, 0, 0, {borderStyle: 'dashed', borderColor: '#1D9BF0', boxSizing: 'border-box'});
+const heldDots = [0, 1, 2, 3].map(() => box(heldEl, 0, 0, {background: '#fff', borderStyle: 'solid', borderColor: '#1D9BF0', boxSizing: 'border-box'}));
+function drawHeld(f, si) {
+  const g = RIG.held(f, si);
+  if (!g) { heldEl.style.display = 'none'; return; }
+  const vw = X.video.w, vh = X.video.h, G = [GRAB_AT[0] * vw, GRAB_AT[1] * vh], sc = g.sc;
+  Object.assign(heldEl.style, {display: 'block', width: vw + 'px', height: vh + 'px', transformOrigin: `${G[0]}px ${G[1]}px`,
+    transform: `${T(g.pivot[0] - G[0], g.pivot[1] - G[1])} rotate(${g.ang.toFixed(3)}deg) scale(${sc.toFixed(5)})`, filter: g.blur > 0.05 ? `blur(${(g.blur / sc).toFixed(2)}px)` : ''});
+  heldImg.style.borderRadius = Math.max(10, 16 * sc) / sc + 'px';
+  heldImg.style.boxShadow = `0 ${8 / sc}px ${22 / sc}px rgba(0,0,0,.28)`;
+  setSrc(heldImg, VIDEO_PLACEHOLDERS.en);
+  const dash = f < F.slam0 ? clamp((f - F.grab + 1) / 1.5) : clamp(1 - (f - F.slam0) / 8), pad = 6 / sc, d = 7 / sc;
+  Object.assign(heldDash.style, {left: -pad + 'px', top: -pad + 'px', width: vw + 2 * pad + 'px', height: vh + 2 * pad + 'px', opacity: dash, borderWidth: 1.4 / sc + 'px'});
+  [[-pad, -pad], [vw + pad, -pad], [-pad, vh + pad], [vw + pad, vh + pad]].forEach(([x, y], i) => Object.assign(heldDots[i].style, {left: x - d / 2 + 'px', top: y - d / 2 + 'px', width: d + 'px', height: d + 'px', borderWidth: 1.2 / sc + 'px', opacity: dash}));
+}
+
+const CURSOR = RIG.CURSOR, HOT = RIG.HOT, BODY = RIG.BODY;
+
+const tinted = (col) => 'data:image/svg+xml;utf8,' + encodeURIComponent(ARROW_SVG.replace('fill="#fff"', 'fill="__C__"').replace('fill="#000"', 'fill="#fff"').replace('__C__', col));
+const curEls = {};
+function curEl(c) {
+  if (curEls[c.id]) return curEls[c.id];
+  const size = c.size || CURSOR, o = {size};
+  o.el = box(world, 0, 0, {width: size + 'px', height: size + 'px', display: 'none', transformOrigin: '0 0'});
+  o.img = el(o.el, 'img', {left: 0, top: 0, width: '100%', height: '100%', filter: `drop-shadow(0 ${0.6 * size / CURSOR}px ${0.9 * size / CURSOR}px rgba(0,0,0,.3))`});
+  o.img.src = c.kind === 'mp' ? tinted(c.color) : (c.kind === 'hand' ? 'cursor-grab.svg' : 'cursor-arrow.svg');
+  if (c.kind === 'mp') o.tag = box(world, 0, 0, {display: 'none', padding: `${CANVAS.tagSize * 0.2}px ${CANVAS.tagSize * 0.5}px`, borderRadius: CANVAS.tagSize * 0.35 + 'px', background: c.color, color: '#fff',
+    font: `600 ${CANVAS.tagSize}px/${CANVAS.tagSize * 1.3}px ${UI_FONT}`, whiteSpace: 'nowrap', boxShadow: '0 2px 6px rgba(0,0,0,.15)'}, c.tag);
+  return (curEls[c.id] = o);
+}
+function drawCursors(f, si) {
+  const list = RIG.cursors(f, si), on = new Set(list.map((c) => c.id));
+  for (const id in curEls) if (!on.has(id)) { curEls[id].el.style.display = 'none'; if (curEls[id].tag) curEls[id].tag.style.display = 'none'; }
+  for (const c of list) {
+    const o = curEl(c), k = o.size / 512, kind = c.kind === 'hand' ? 'hand' : 'arrow';
+    const [hx, hy] = HOT[kind].map((v) => v * k), [bx, by] = kind === 'arrow' ? BODY.map((v) => v * k) : [hx, hy];
+
+    o.el.style.display = 'block';
+    o.el.style.transform = `${T(c.pos[0] - hx, c.pos[1] - hy)} ${T(bx, by)} rotate(${c.tilt.toFixed(3)}deg) ${T(hx - bx, hy - by)} scale(${c.sc.toFixed(4)}) ${T(-hx, -hy)}`;
+    if (o.tag) { o.tag.style.display = 'block'; o.tag.style.transform = T(c.pos[0] + o.size * 0.5, c.pos[1] + o.size * 0.72); }
+  }
+}
+
+let SW = W, SH = H;
+const stage = document.getElementById('stage'), plane = document.getElementById('plane');
+function draw(f, base) {
+  const si = shotIndex(base);
+  const cam = RIG.camAt(f, si), s = SW / cam.w;
+  world.style.transform = `translate(${(SW / 2 - cam.cx * s).toFixed(3)}px, ${(SH / 2 - cam.cy * s).toFixed(3)}px) scale(${s.toFixed(6)})`;
+
+  const tilted = cam.rx || cam.ry || cam.rz;
+  stage.style.perspective = tilted ? (SH / (2 * Math.tan((58 * Math.PI) / 360))).toFixed(1) + 'px' : 'none';
+  plane.style.transform = tilted ? `rotateZ(${cam.rz}deg) rotateX(${cam.rx}deg) rotateY(${cam.ry}deg)` : 'none';
+
+  const gs = CANVAS.gridStep, half = Math.ceil((cam.w * 2.6) / gs) * gs, gx = Math.floor(cam.cx / gs) * gs - half, gy = Math.floor(cam.cy / gs) * gs - half;
+  Object.assign(canvasEl.style, {left: gx + 'px', top: gy + 'px', width: 2 * half + 'px', height: 2 * half + 'px', backgroundPosition: '-1px -1px'});
+  const edge = RIG.sheetEdge(f), covered = f >= F.drag1;
+  xpage.style.display = covered ? 'none' : 'block';
+  if (!covered) drawX(f);
+  const desk = f >= F.cutC;
+  stage.style.background = desk ? CANVAS.bg : covered ? AI.bg : '#fff';
+  canvasEl.style.display = desk ? 'block' : 'none';
+  const sh = f >= F.tab && !covered;
+  sheet.style.display = sh ? 'block' : 'none';
+  tab.style.display = sh ? 'grid' : 'none';
+  if (sh) { sheet.style.transform = T(0, edge - 6000); tab.style.transform = T(RIG.TAB.x - RIG.TAB.w / 2, edge); }
+  const app = (f >= F.aiIn && f < F.cutE) || f >= F.appUp;
+  aipage.style.display = app ? 'block' : 'none';
+  if (app) drawAI(f);
+  drawCanvas(f);
+  drawHeld(f, si);
+  drawCursors(f, si);
+  drawDim(f);
+  drawPlayer(f);
+  drawOutro(f);
+  CUR = {f, base, si, cam};
+}
+let CUR = null;
+
+function layout() {
+  const pv = document.body.classList.contains('preview') ;
+  let w = innerWidth, h = innerHeight;
+  if (pv) { h = innerHeight - 46; w = Math.round((h * 9) / 16); if (w > innerWidth) { w = innerWidth; h = Math.round((w * 16) / 9); } }
+  SW = w; SH = h;
+  Object.assign(stage.style, {width: w + 'px', height: h + 'px', left: Math.round((innerWidth - w) / 2) + 'px'});
+  Object.assign(plane.style, {width: w + 'px', height: h + 'px'});
+  if (CUR) draw(CUR.f, CUR.base);
+}
+
+window.FILM = {FPS, END: F.end, SHOTS};
+window.filmReady = (async () => {
+  layout(); addEventListener('resize', layout);
+  const configuredText = Object.values(COPY).flatMap(function strings(value) {
+    return typeof value === 'string' ? [value] : Object.values(value ?? {}).flatMap(strings);
+  }).join('');
+  await Promise.all([
+    document.fonts.load(`400 17px ${UI_FONT}`, configuredText),
+    document.fonts.load(`500 15px ${UI_FONT}`, configuredText),
+    document.fonts.load(`700 15px ${UI_FONT}`, configuredText),
+    document.fonts.load(`700 26px ${SERIF_FONT}`, configuredText),
+  ]);
+  await document.fonts.ready;
+  fitText(XP.translation, COPY.translation.map(part => part.t).join(''), BAR.w - 18);
+  fitText(AP.textRow, COPY.prompt, AI.composer.w - 60);
+  fitText(AP.b1.text, COPY.prompt, AI.composer.w - 60);
+  fitText(AP.reply3, COPY.final.reply, AI.composer.w);
+  fitText(cmt.row, COPY.comment.first, CMT.w - 40);
+  for (let f = 0; f < F.end; f += 1) for (const c of RIG.cursors(f)) curEl(c);
+  for (let f = F.burst0; f < F.end; f += 2) drawOutro(f);
+  await Promise.all([...document.images].map((i) => i.decode().catch(() => {})));
+})();
+
+window.seek = async (f, base = Math.round(f)) => {
+  await window.filmReady;
+  pending.length = 0;
+  draw(f, base);
+  await Promise.all(pending);
+};
+window.subframes = (f, outW = 540, shutter = TUNE.global.shutter) => {
+  const smear = (RIG.motion(f, shotIndex(f)) * outW) / W * shutter;
+  const busy = f < 60 || (f >= F.aiIn - 2 && f < F.cutB + 6) || (f >= F.impact - 4 && f < F.impact + 16) || (f >= F.fly0 && f < F.fly1 + 8) || f >= F.click3;
+  const n = smear < 0.35 ? 1 : smear < 3 ? 2 : smear < 6 ? 3 : 6;
+  return busy ? Math.max(n, 2) : n;
+};
+
+function captureCamera(frame) {
+  const cam = RIG.camAt(frame, shotIndex(frame));
+  const distance = SH / (2 * Math.tan((58 * Math.PI) / 360));
+  const rotation = new DOMMatrix().rotateAxisAngle(0, 0, 1, cam.rz).rotateAxisAngle(1, 0, 0, cam.rx).rotateAxisAngle(0, 1, 0, cam.ry);
+  const axis = point => {
+    const {x, y, z} = rotation.transformPoint(point);
+    return [x, y, z];
+  };
+  return {dpr: devicePixelRatio, W: SW, H: SH, f: distance, sc: SW / cam.w, tx: cam.cx, ty: cam.cy,
+    A: axis({x: 1, y: 0, z: 0}), B: axis({x: 0, y: 1, z: 0})};
+}
+
+window.animationReady = window.filmReady.then(() => ({
+  duration: F.end / FPS,
+  seek(t) { return window.seek(Math.min(F.end - 1, Math.floor(t * FPS + 1e-8))); },
+  drawSample(frame, offset) {
+    if (offset === 0) return window.seek(frame, frame);
+    return window.seek(frame + offset * TUNE.global.shutter, frame);
+  },
+  camera: captureCamera,
+  samples(frame, width) { return window.subframes(frame, width); }
+}));
+openPreview(window.animationReady);
+</script>
+</body>
+</html>

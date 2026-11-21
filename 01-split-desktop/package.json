@@ -1,0 +1,15 @@
+{
+  "name": "split-desktop",
+  "description": "分身乏术 · 桌面：基于 HTML5 Canvas 与 WebGL2 的程序化桌面动画短片",
+  "license": "CC-BY-4.0",
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "scripts": {
+    "render": "node render.mjs"
+  },
+  "dependencies": {
+    "puppeteer-core": "25.18.1"
+  },
+  "private": true
+}

@@ -1,0 +1,530 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<title>没有 AI 的世界线</title>
+<style>
+  html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; background: #0b0b0c; }
+  #stage { position: absolute; left: 0; top: 0; overflow: hidden; background: #0b0b0c; }
+  #cam { position: absolute; }
+  #cam iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; background: #0e0e10; display: none; }
+  #vig { position: absolute; inset: 0; pointer-events: none; background: radial-gradient(ellipse 85% 75% at 50% 50%, transparent 65%, rgba(0,0,0,.07) 100%); }
+
+  #ui { position: fixed; box-sizing: border-box; inset: auto 0 0; height: 46px; display: flex; align-items: center; gap: 12px; padding: 0 12px; background: #19191b; color: #ddd; font: 13px system-ui, sans-serif; }
+  #ui button, #soundtrack { white-space: nowrap; cursor: pointer; }
+  #ui button { color: inherit; background: #313137; border: 1px solid #525258; border-radius: 4px; padding: 4px 9px; }
+  #position { flex: 1; min-width: 45px; }
+  #clock { min-width: 58px; text-align: right; font-variant-numeric: tabular-nums; }
+  #soundtrack { position: relative; }
+  #audio-file { position: absolute; inset: 0; width: 100%; opacity: 0; cursor: pointer; }
+  #soundtrack:focus-within { outline: 1px solid #ddd; }
+  body:not(.preview) #ui { display: none; }
+</style>
+</head>
+<body>
+<div id="stage"><div id="cam"></div><div id="vig"></div></div>
+<div id="ui">
+  <button id="play" type="button">播放</button>
+  <input id="position" type="range" min="0" value="0" step="any" aria-label="播放进度">
+  <output id="clock" for="position">0.00 s</output>
+  <label id="soundtrack">更换配乐<input id="audio-file" type="file" accept="audio/*"></label>
+  <audio id="music" src="assets/soundtrack.m4a" preload="metadata"></audio>
+</div>
+<template id="screen-break">
+<link rel="stylesheet" href="fonts.css">
+<link rel="stylesheet" href="screens/common.css">
+<style>
+  body { position: relative; background: #202020; }
+  #code { position: absolute; left: 0; top: 0; width: 1440px; height: 900px; }
+  #code text { font-family: "JetBrains Mono", var(--chinese-font), monospace; font-weight: 800; font-size: 15px; text-anchor: middle; dominant-baseline: central; font-variant-ligatures: none; }
+  #code text.cjk { font-family: var(--chinese-font), sans-serif; font-weight: 700; font-size: 13.5px; }
+  #code text.lab { font-family: "Inter", var(--chinese-font), sans-serif; font-weight: 700; font-size: 12.5px; text-anchor: start; letter-spacing: .02em; }
+  #code text.hex { fill: #4f4b45; }
+  #slab { position: absolute; left: 0; top: 0; width: 1440px; height: 900px; filter: drop-shadow(0 1.6px 2.2px rgba(0, 0, 0, .55)); }
+  #slab iframe { position: absolute; left: 0; top: 0; width: 1440px; height: 900px; border: 0; visibility: hidden; background: #fff; }
+  #chars, #over { position: absolute; left: 0; top: 0; width: 1440px; height: 900px; overflow: visible; pointer-events: none; filter: drop-shadow(0 1px 1.4px rgba(0, 0, 0, .35)); }
+  #chars text, #over text { font-family: "JetBrains Mono", var(--chinese-font), monospace; font-weight: 800; font-size: 6.6px; text-anchor: middle; dominant-baseline: central; }
+  #fade { position: absolute; left: -3000px; top: -3000px; width: 7440px; height: 6900px; background: #000; opacity: 0; pointer-events: none; }
+  #vac, #word { position: absolute; left: 0; top: 0; width: 1440px; height: 900px; overflow: visible; pointer-events: none; }
+  #word { filter: drop-shadow(0 1.2px 1.8px rgba(0, 0, 0, .5)); }
+  #word text { font-family: "JetBrains Mono", var(--chinese-font), monospace; font-weight: 800; font-size: 15px; text-anchor: middle; dominant-baseline: central; font-variant-ligatures: none; }
+  #word text.cjk { font-family: var(--chinese-font), sans-serif; font-weight: 700; font-size: 13.5px; }
+</style>
+<script src="screens/kit.js"></script>
+<svg id="code" viewBox="0 0 1440 900" xmlns="http://www.w3.org/2000/svg"></svg>
+<svg id="vac" viewBox="0 0 1440 900" xmlns="http://www.w3.org/2000/svg"></svg>
+<div id="slab"></div>
+<svg id="chars" viewBox="0 0 1440 900" xmlns="http://www.w3.org/2000/svg"></svg>
+<svg id="over" viewBox="0 0 1440 900" xmlns="http://www.w3.org/2000/svg"></svg>
+<svg id="word" viewBox="0 0 1440 900" xmlns="http://www.w3.org/2000/svg"></svg>
+<div id="fade"></div>
+<script src="screens/break.js"></script>
+</template>
+
+<template id="screen-pen">
+<link rel="stylesheet" href="fonts.css">
+<link rel="stylesheet" href="screens/common.css">
+<style>
+  :root { --blue: #0d99ff; --line: #e8e8e8; --sub: #8c8c8c; --sel: #e5f4ff; --pen: #2f7cf6; }
+  .app { position: relative; width: 1440px; height: 900px; background: #fff; }
+  .rail { position: absolute; left: 0; top: 0; bottom: 0; width: 56px; border-right: 1px solid var(--line); display: flex; flex-direction: column; align-items: center; padding-top: 14px; gap: 14px; background: #fff; z-index: 2; }
+  .rail .logo { width: 26px; height: 26px; margin-bottom: 10px; }
+  .rail .it { display: flex; flex-direction: column; align-items: center; gap: 5px; font-size: 10.5px; color: #444; }
+  .rail .it b { width: 38px; height: 38px; border-radius: 9px; display: grid; place-items: center; }
+  .rail .it.on b { background: var(--sel); color: var(--blue); }
+  .rail .it svg.i { width: 19px; height: 19px; }
+  .canvas { position: absolute; left: 56px; top: 0; width: 1084px; height: 900px; background: #f4f4f2; overflow: hidden; }
+  .ruler-h { position: absolute; left: 22px; right: 0; top: 0; height: 22px; background: #fbfbfa; border-bottom: 1px solid #e2e2e0; }
+  .ruler-v { position: absolute; left: 0; top: 22px; bottom: 0; width: 22px; background: #fbfbfa; border-right: 1px solid #e2e2e0; }
+  .ruler-c { position: absolute; left: 0; top: 0; width: 22px; height: 22px; background: #fbfbfa; border-right: 1px solid #e2e2e0; border-bottom: 1px solid #e2e2e0; }
+  .ruler-h svg, .ruler-v svg { position: absolute; inset: 0; }
+  #cv { position: absolute; left: 22px; top: 22px; }
+  .file { position: absolute; left: 38px; top: 34px; display: flex; align-items: center; gap: 8px; font-size: 12px; color: #555; background: #fff; border-radius: 8px; padding: 6px 10px; box-shadow: 0 0 0 1px rgba(0,0,0,.06); }
+  .file b { font-weight: 600; color: #1e1e1e; }
+  .toolbar { position: absolute; left: 50%; transform: translateX(-50%); bottom: 20px; height: 52px; padding: 0 8px; background: #fff; border-radius: 12px;
+    box-shadow: 0 0 0 1px rgba(0,0,0,.06), 0 4px 14px rgba(0,0,0,.08); display: flex; align-items: center; gap: 2px; }
+  .toolbar .t { width: 36px; height: 36px; border-radius: 8px; display: grid; place-items: center; color: #222; }
+  .toolbar .t svg.i { width: 19px; height: 19px; }
+  .toolbar .t.on { background: var(--blue); color: #fff; }
+  .toolbar .car { width: 10px; color: #555; font-size: 9px; margin-right: 6px; }
+  .toolbar .dv { width: 1px; height: 30px; background: var(--line); margin: 0 6px; }
+  .right { position: absolute; left: 1140px; top: 0; width: 300px; height: 900px; border-left: 1px solid var(--line); background: #fff; display: flex; flex-direction: column; }
+  .top { height: 58px; display: flex; align-items: center; padding: 0 14px 0 16px; gap: 10px; }
+  .avatar { width: 28px; height: 28px; border-radius: 50%; background: linear-gradient(135deg, #f6c38b, #d9875d); }
+  .top .sp { flex: 1; }
+  .share { background: var(--blue); color: #fff; font-weight: 600; font-size: 12.5px; padding: 8px 14px; border-radius: 7px; }
+  .tabs { display: flex; gap: 4px; padding: 0 12px 10px; border-bottom: 1px solid var(--line); font-size: 12.5px; }
+  .tabs b { padding: 5px 10px; border-radius: 6px; font-weight: 500; color: #999; }
+  .tabs b.on { background: #f2f2f2; color: #1e1e1e; }
+  .sec { border-bottom: 1px solid var(--line); padding: 12px 16px 14px; }
+  .sec .t { font-weight: 600; font-size: 12.5px; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center; }
+  .sec .t span { font-weight: 500; color: #999; }
+  .fl { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .fl div { height: 30px; background: #f4f4f4; border-radius: 6px; display: flex; align-items: center; gap: 7px; padding: 0 9px; font-size: 12.5px; font-family: "JetBrains Mono", var(--chinese-font), monospace; }
+  .fl div em { font-style: normal; color: #999; font-size: 11px; font-family: var(--chinese-font), sans-serif; }
+  .sw { width: 16px; height: 16px; border-radius: 4px; box-shadow: inset 0 0 0 1px rgba(0,0,0,.12); }
+</style>
+<script src="screens/kit.js"></script>
+<div class="app">
+  <nav class="rail">
+    <svg class="logo" viewBox="0 0 26 26"><rect x="3" y="3" width="20" height="20" rx="6" fill="#1e1e1e"/><path d="M8 18c2-7 4-10 5-10s3 3 5 10" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round"/></svg>
+    <div class="it"><b><svg class="i" viewBox="0 0 24 24"><path d="M7 3h7l4 4v14H7z"/><path d="M14 3v4h4"/></svg></b>文件</div>
+    <div class="it on"><b><svg class="i" viewBox="0 0 24 24"><path d="M12 4l8 4-8 4-8-4z"/><path d="M4 12l8 4 8-4M4 16l8 4 8-4"/></svg></b>字形</div>
+    <div class="it"><b><svg class="i" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 8.5v7M8.5 12h7"/></svg></b>素材</div>
+  </nav>
+
+  <main class="canvas">
+    <div class="ruler-c"></div>
+    <div class="ruler-h"><svg id="rh" width="1062" height="22"></svg></div>
+    <div class="ruler-v"><svg id="rv" width="22" height="878"></svg></div>
+    <svg id="cv" width="1062" height="878"></svg>
+    <div class="file"><svg class="i" viewBox="0 0 24 24"><path d="M5 19L12 5l7 14M8 14h8"/></svg><b>样张</b> · 常规</div>
+    <div class="toolbar">
+      <div class="t"><svg class="i" viewBox="0 0 24 24"><path d="M5 4l14 6-6 2-2 6z" stroke-width="1.6"/></svg></div><span class="car">⌄</span>
+      <div class="t"><svg class="i" viewBox="0 0 24 24"><path d="M8 3v18M16 3v18M3 8h18M3 16h18"/></svg></div><span class="car">⌄</span>
+      <div class="t"><svg class="i" viewBox="0 0 24 24"><rect x="5" y="5" width="14" height="14" rx="1"/></svg></div><span class="car">⌄</span>
+      <div class="t on"><svg class="i" viewBox="0 0 24 24"><g transform="translate(5.5 4) rotate(-30)"><path d="M0 0L5.2 9.1Q5.8 10.2 5.3 11.3L4.4 13.5H-4.4L-5.3 11.3Q-5.8 10.2 -5.2 9.1Z"/><rect x="-4.3" y="15" width="8.6" height="3" rx="1.1"/><path d="M0 1.3V6.9"/><circle cx="0" cy="8.5" r="1.4"/></g></svg></div><span class="car">⌄</span>
+      <div class="t"><svg class="i" viewBox="0 0 24 24"><path d="M6 5h12M12 5v14M9 19h6"/></svg></div><span class="car">⌄</span>
+      <div class="dv"></div>
+      <div class="t"><svg class="i" viewBox="0 0 24 24"><circle cx="6" cy="17" r="2"/><circle cx="18" cy="7" r="2"/><path d="M8 17c6 0 2-10 8-10"/></svg></div>
+      <div class="t"><svg class="i" viewBox="0 0 24 24"><path d="M12 4a8 8 0 0 0-7 12l-1 4 4-1a8 8 0 1 0 4-15z"/></svg></div>
+    </div>
+  </main>
+
+  <aside class="right">
+    <div class="top"><div class="avatar"></div><span style="color:#555;font-size:9px">⌄</span><div class="sp"></div><div class="share">分享</div></div>
+    <div class="tabs"><b class="on">设计</b><b>原型</b><b>字形</b></div>
+    <div class="sec"><div class="t">字形 <span id="gname">n · U+006E</span></div>
+      <div class="fl"><div><em>宽度</em>520</div><div><em>左边距</em>60</div><div><em>右边距</em>70</div><div><em>图层</em>常规</div></div></div>
+    <div class="sec"><div class="t">路径 <span id="pts">4 个点</span></div>
+      <div class="fl"><div><em>X</em>60</div><div><em>Y</em>0</div><div><em>宽</em>390</div><div><em>高</em>512</div></div></div>
+    <div class="sec"><div class="t">描边</div>
+      <div class="fl"><div><i class="sw" style="background:#1e1e1e"></i>1E1E1E</div><div><em>粗细</em>1</div></div></div>
+    <div class="sec"><div class="t">填充 <span id="fillName">无</span></div>
+      <div class="fl"><div><i class="sw" id="fillSw" style="background:#fff"></i><span id="fillHex">—</span></div><div><em>不透明度</em><span id="fillOp">0%</span></div></div></div>
+    <div class="sec"><div class="t">节点</div>
+      <div class="fl"><div><em>X</em><span id="nx">150</span></div><div><em>Y</em><span id="ny">430</span></div><div><em>类型</em><span id="nt">角点</span></div><div><em>手柄</em><span id="nh">—</span></div></div></div>
+  </aside>
+</div>
+<script src="screens/pen.js"></script>
+</template>
+
+<template id="screen-curve">
+<link rel="stylesheet" href="fonts.css">
+<link rel="stylesheet" href="screens/common.css">
+<style>
+  :root { --blue: #0d99ff; --line: #e8e8e8; --sub: #8c8c8c; --canvas: #f5f5f5; --sel: #e5f4ff; --red: #ef5b5f; --green: #2fae79; --hb: #3b7ddd; }
+  .app { display: grid; width: 1440px; height: 900px; grid-template-columns: 56px 1fr 520px; grid-template-rows: 300px 600px; background: #fff; }
+
+  .rail { grid-row: 1 / 3; border-right: 1px solid var(--line); display: flex; flex-direction: column; align-items: center; padding-top: 14px; gap: 14px; }
+  .rail .logo { width: 26px; height: 26px; margin-bottom: 10px; }
+  .rail .it { display: flex; flex-direction: column; align-items: center; gap: 5px; font-size: 10.5px; color: #444; }
+  .rail .it b { width: 38px; height: 38px; border-radius: 9px; display: grid; place-items: center; }
+  .rail .it.on b { background: var(--sel); color: var(--blue); }
+  .rail .it svg.i { width: 19px; height: 19px; }
+  .canvas { background: var(--canvas); position: relative; overflow: hidden; }
+  .frame-label { position: absolute; left: 241px; top: 16px; color: #a3a3a3; font-size: 12px; }
+  .frame { position: absolute; left: 241px; top: 36px; width: 381px; height: 184px; background: #fff; }
+  .frame svg { position: absolute; inset: 0; }
+  .toolbar { position: absolute; left: 50%; transform: translateX(-50%); bottom: 20px; height: 52px; padding: 0 8px; background: #fff; border-radius: 12px;
+    box-shadow: 0 0 0 1px rgba(0,0,0,.06), 0 4px 14px rgba(0,0,0,.08); display: flex; align-items: center; gap: 2px; }
+  .toolbar .t { width: 36px; height: 36px; border-radius: 8px; display: grid; place-items: center; color: #222; }
+  .toolbar .t svg.i { width: 19px; height: 19px; }
+  .toolbar .t.on { background: var(--blue); color: #fff; }
+  .toolbar .car { width: 10px; color: #555; font-size: 9px; margin-right: 6px; }
+  .toolbar .dv { width: 1px; height: 30px; background: var(--line); margin: 0 6px; }
+  .toolbar .t.soft { color: #777; }
+  .toolbar .t.hl { background: #eef6ff; color: var(--blue); }
+  .layers-hidden { position: absolute; left: 16px; top: 14px; display: flex; align-items: center; gap: 8px; color: #777; font-size: 12px; background: #fff; border-radius: 8px; padding: 6px 10px; box-shadow: 0 0 0 1px rgba(0,0,0,.06); }
+  .right { grid-row: 1 / 3; grid-column: 3; border-left: 1px solid var(--line); display: flex; flex-direction: column; font-size: 14px; }
+  .top { height: 58px; flex: none; display: flex; align-items: center; padding: 0 16px 0 18px; gap: 10px; }
+  .avatar { width: 28px; height: 28px; border-radius: 50%; background: linear-gradient(135deg, #f6c38b, #d9875d); }
+  .top .sp { flex: 1; }
+  .share { background: var(--blue); color: #fff; font-weight: 600; font-size: 13px; padding: 8px 15px; border-radius: 7px; }
+  .mrow { flex: none; display: flex; align-items: center; padding: 2px 18px 12px; gap: 6px; font-weight: 600; font-size: 13px; border-bottom: 1px solid var(--line); }
+  .beta { font-weight: 500; font-size: 11px; border: 1px solid var(--line); border-radius: 5px; padding: 1px 6px; color: #444; }
+  .mrow .z { margin-left: auto; font-weight: 500; }
+  .ehd { flex: none; position: relative; height: 52px; display: flex; align-items: center; justify-content: center; font-weight: 600; font-size: 15.5px; }
+  .ehd svg { position: absolute; left: 16px; top: 16px; width: 20px; height: 20px; color: #333; }
+  .dd { flex: none; margin: 0 16px; height: 40px; border: 1px solid #dedede; border-radius: 8px; display: flex; align-items: center; gap: 10px; padding: 0 12px; font-size: 14px; }
+  .dd .v { margin-left: auto; color: #555; }
+  .seg { flex: none; margin: 10px 16px 0; height: 38px; background: #f2f2f2; border-radius: 8px; display: flex; padding: 2px; font-size: 14px; }
+  .seg b { flex: 1; display: grid; place-items: center; font-weight: 500; color: #9a9a9a; border-radius: 7px; }
+  .seg b.on { background: #fff; color: #1e1e1e; box-shadow: 0 0 0 1px rgba(0,0,0,.08), 0 1px 2px rgba(0,0,0,.05); }
+  .graph { flex: none; position: relative; margin: 12px auto 0; width: 408px; height: 408px; background: #f4f4f4; border-radius: 8px; }
+  .graph svg { position: absolute; inset: 0; overflow: visible; }
+  .vals { flex: none; margin: 12px 16px 0; display: flex; gap: 10px; align-items: center; }
+  .vals .in { flex: 1; height: 40px; background: #f2f2f2; border-radius: 8px; display: flex; align-items: center; gap: 10px; padding: 0 12px; font-size: 14.5px; font-family: "Inter", sans-serif; font-variant-numeric: tabular-nums; }
+  .vals .ic { width: 34px; height: 34px; display: grid; place-items: center; color: #333; }
+  .spr { flex: none; margin: 12px 16px 0; display: none; flex-direction: column; gap: 12px; }
+  .spr .r { display: flex; align-items: center; gap: 12px; font-size: 13.5px; }
+  .spr .r em { font-style: normal; width: 44px; color: #666; }
+  .spr .tr { position: relative; flex: 1; height: 26px; }
+  .spr .tr::before { content: ""; position: absolute; left: 0; right: 0; top: 11px; height: 4px; border-radius: 2px; background: #e4e4e4; }
+  .spr .fill { position: absolute; left: 0; top: 11px; height: 4px; border-radius: 2px; background: var(--blue); transform-origin: 0 0; width: 100px; }
+  .spr .kn { position: absolute; left: 0; top: 0; width: 18px; height: 18px; margin: 4px 0 0 -9px; border-radius: 50%; background: #fff; box-shadow: 0 0 0 1px rgba(0,0,0,.14), 0 1px 3px rgba(0,0,0,.22); }
+  .spr .kn.hot { box-shadow: 0 0 0 2px var(--blue), 0 1px 3px rgba(0,0,0,.22); }
+  .spr .num { width: 64px; height: 32px; background: #f2f2f2; border-radius: 7px; display: grid; place-items: center; font: 500 13.5px "JetBrains Mono", monospace; }
+  body.spring .spr { display: flex; } body.spring .vals { display: none; }
+  .audio { flex: none; margin-top: 18px; height: 56px; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); display: flex; align-items: center; padding: 0 16px 0 20px; font-size: 15px; color: #666; }
+  .audio .sp { flex: 1; }
+  .props { flex: 1; padding: 14px 18px; display: grid; grid-template-columns: 1fr 1fr; gap: 10px 12px; align-content: start; }
+  .props .ttl { grid-column: 1 / 3; font-weight: 600; font-size: 13px; }
+  .props .f { font-size: 11.5px; color: var(--sub); }
+  .props .f div { margin-top: 4px; height: 32px; background: #f4f4f4; border-radius: 6px; display: flex; align-items: center; padding: 0 10px; color: #1e1e1e; font-size: 13px; }
+  .ge { grid-column: 2; border-top: 1px solid var(--line); position: relative; background: #fff; overflow: hidden; }
+  .ge .head { height: 44px; display: flex; align-items: center; gap: 14px; padding: 0 16px; border-bottom: 1px solid var(--line); }
+  .ge .tm { font-family: "JetBrains Mono", monospace; font-size: 12.5px; color: #333; background: #f4f4f4; border-radius: 5px; padding: 3px 7px; }
+  .ge .ms { color: #999; font-size: 12px; margin-left: -8px; }
+  .ge .tg { display: flex; background: #f2f2f2; border-radius: 7px; padding: 2px; font-size: 12px; margin-left: 8px; }
+  .ge .tg b { padding: 4px 10px; border-radius: 5px; font-weight: 500; color: #999; }
+  .ge .tg b.on { background: #fff; color: #1e1e1e; box-shadow: 0 0 0 1px rgba(0,0,0,.06); }
+  .chip { display: flex; align-items: center; gap: 7px; font-size: 12.5px; padding: 4px 10px; border-radius: 6px; }
+  .chip.on { background: #f4f4f4; }
+  .chip i { width: 9px; height: 9px; border-radius: 2px; }
+  .ge .sp { flex: 1; }
+  #plot { position: absolute; left: 0; top: 44px; }
+</style>
+<script src="screens/kit.js"></script>
+<div class="app">
+  <nav class="rail">
+    <svg class="logo" viewBox="0 0 26 26"><rect x="3" y="3" width="20" height="20" rx="6" fill="#1e1e1e"/><path d="M8.5 17V9.5l4.5 5 4.5-5V17" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    <div class="it on"><b><svg class="i" viewBox="0 0 24 24"><path d="M7 3h7l4 4v14H7z"/><path d="M14 3v4h4"/></svg></b>文件</div>
+    <div class="it"><b><svg class="i" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 8.5v7M8.5 12h7"/></svg></b>素材</div>
+    <div class="it"><b><svg class="i" viewBox="0 0 24 24"><rect x="4" y="8" width="16" height="11" rx="2"/><path d="M9 8V6h6v2M4 13h16"/></svg></b>工具</div>
+  </nav>
+
+  <main class="canvas">
+    <div class="layers-hidden"><svg class="i" viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="14" rx="2"/><path d="M10 5v14"/></svg>图层已隐藏</div>
+    <div class="frame-label">幻灯片 16:9 - 1</div>
+    <div class="frame"><svg viewBox="0 0 620 300" width="381" height="184" id="scene"></svg></div>
+    <div class="toolbar">
+      <div class="t on"><svg class="i" viewBox="0 0 24 24"><path d="M5 4l14 6-6 2-2 6z" stroke-width="1.6"/></svg></div><span class="car">⌄</span>
+      <div class="t"><svg class="i" viewBox="0 0 24 24"><path d="M8 3v18M16 3v18M3 8h18M3 16h18"/></svg></div><span class="car">⌄</span>
+      <div class="t"><svg class="i" viewBox="0 0 24 24"><rect x="5" y="5" width="14" height="14" rx="1"/></svg></div><span class="car">⌄</span>
+      <div class="t"><svg class="i" viewBox="0 0 24 24"><path d="M4 20l3-1 11-11-2-2L5 17z M14 6l2 2"/></svg></div><span class="car">⌄</span>
+      <div class="t"><svg class="i" viewBox="0 0 24 24"><path d="M6 5h12M12 5v14M9 19h6"/></svg></div><span class="car">⌄</span>
+      <div class="dv"></div>
+      <div class="t soft"><svg class="i" viewBox="0 0 24 24"><path d="M4 18c3-1 5-6 8-6s3 4 6 3M6 9l3-3 3 3"/></svg></div>
+      <div class="t hl"><svg class="i" viewBox="0 0 24 24"><path d="M12 4l7 8-7 8-7-8z"/><path d="M12 9l3 3-3 3-3-3z"/></svg></div>
+      <div class="t soft"><svg class="i" viewBox="0 0 24 24"><path d="M9 7l-5 5 5 5M15 7l5 5-5 5"/></svg></div>
+    </div>
+  </main>
+
+  <aside class="right">
+    <div class="top">
+      <div class="avatar"></div><span style="color:#555;font-size:9px">⌄</span>
+      <div class="sp"></div>
+      <svg class="i" viewBox="0 0 24 24" style="width:20px;height:20px"><path d="M7 5l12 7-12 7z"/></svg><span style="color:#555;font-size:9px">⌄</span>
+      <div class="share">分享</div>
+    </div>
+    <div class="mrow">动效 <span class="beta">Beta</span><span class="z">28% <span style="font-size:9px">⌄</span></span></div>
+    <div class="ehd"><svg class="i" viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg>缓动</div>
+    <div class="dd"><svg class="i" viewBox="0 0 24 24" style="color:#777;width:20px;height:20px"><path d="M4 19c6 0 4-14 16-14"/><path d="M4 5v14h16" stroke-dasharray="1.5 2.5" stroke="#bbb"/></svg><span id="ddname">自定义贝塞尔</span><span class="v">⌄</span></div>
+    <div class="seg"><b class="on" id="tabC">曲线</b><b id="tabS">弹簧</b></div>
+    <div class="graph"><svg id="graph" width="408" height="408"></svg></div>
+    <div class="vals">
+      <div class="in"><svg class="i" viewBox="0 0 24 24" style="width:20px;height:20px;color:#555"><circle cx="5.5" cy="17.5" r="2"/><circle cx="18.5" cy="6.5" r="2"/><path d="M7.5 17c6 0 3-10 9-10M3 6.5h7"/></svg><span id="vals"></span></div>
+      <div class="ic"><svg class="i" viewBox="0 0 24 24" style="width:20px;height:20px"><path d="M14 4l6 6M20 4l-6 6M4 14l6 6M10 14l-6 6" stroke-width="1.3"/></svg></div>
+    </div>
+    <div class="spr">
+      <div class="r"><em>时长</em><div class="tr"><i class="fill" id="fillD"></i><i class="kn" id="knD"></i></div><span class="num" id="numD">0.80</span></div>
+      <div class="r"><em>弹性</em><div class="tr" id="trB"><i class="fill" id="fillB"></i><i class="kn" id="knB"></i></div><span class="num" id="numB">0.30</span></div>
+    </div>
+    <div class="audio">音频<span class="sp"></span><svg class="i" viewBox="0 0 24 24" style="width:20px;height:20px;color:#777"><path d="M12 5v14M5 12h14"/></svg></div>
+    <div class="props">
+      <div class="ttl">关键帧</div>
+      <div class="f">时间<div id="kt">420 毫秒</div></div>
+      <div class="f">数值<div>0 px</div></div>
+      <div class="f">插值<div>贝塞尔 <span style="margin-left:auto;color:#888;font-size:9px">⌄</span></div></div>
+      <div class="f">时长<div>340 毫秒</div></div>
+    </div>
+  </aside>
+
+  <section class="ge">
+    <div class="head">
+      <svg class="i" viewBox="0 0 24 24" style="width:18px;height:18px"><path d="M7 5l12 7-12 7z"/></svg>
+      <span class="tm" id="now">0520</span><span class="tm" style="color:#a0a0a0">1200</span><span class="ms">毫秒</span>
+      <div class="tg"><b id="tabK">关键帧</b><b class="on" id="tabG">曲线图</b></div>
+      <div class="chip on"><i style="background:var(--red)"></i>位置 Y</div>
+      <div class="chip"><i style="background:var(--green)"></i>缩放</div>
+      <div class="sp"></div>
+      <svg class="i" viewBox="0 0 24 24" style="width:18px;height:18px;color:#555"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>
+    </div>
+    <svg id="plot" width="864" height="556"></svg>
+  </section>
+</div>
+<script src="screens/curve.js"></script>
+</template>
+
+<template id="screen-grade">
+<link rel="stylesheet" href="fonts.css">
+<link rel="stylesheet" href="screens/common.css">
+<style>
+  :root { --blue: #0d99ff; --line: #e8e8e8; --sub: #8c8c8c; --sel: #e5f4ff; }
+  body { font-size: 13px; }
+  .app { position: relative; width: 1440px; height: 900px; background: #fff; }
+  .rail { position: absolute; left: 0; top: 0; bottom: 0; width: 56px; border-right: 1px solid var(--line); display: flex; flex-direction: column; align-items: center; padding-top: 14px; gap: 14px; }
+  .rail .logo { width: 26px; height: 26px; margin-bottom: 10px; }
+  .rail .it { display: flex; flex-direction: column; align-items: center; gap: 5px; font-size: 10.5px; color: #444; }
+  .rail .it b { width: 38px; height: 38px; border-radius: 9px; display: grid; place-items: center; }
+  .rail .it.on b { background: var(--sel); color: var(--blue); }
+  .rail .it svg.i { width: 19px; height: 19px; }
+
+  .hist { position: absolute; left: 56px; top: 0; width: 860px; height: 380px; background: #fafafa; }
+  .hh { height: 42px; display: flex; align-items: center; gap: 10px; padding: 0 18px; color: #444; font-size: 12.5px; }
+  .hh b { color: #1e1e1e; font-weight: 600; font-size: 13px; }
+  .hh .sp { flex: 1; }
+  .hh .ab { display: flex; background: #ececec; border-radius: 6px; padding: 2px; font-size: 12px; }
+  .hh .ab span { padding: 3px 9px; border-radius: 5px; color: #888; }
+  .hh .ab span.on { background: #fff; color: #1e1e1e; box-shadow: 0 0 0 1px rgba(0,0,0,.06); }
+  #histo { position: absolute; left: 22px; top: 48px; }
+  #histo path.ch { mix-blend-mode: multiply; }
+  .scope { position: absolute; left: 916px; right: 0; top: 0; height: 380px; border-left: 1px solid var(--line); }
+  .sh { height: 42px; display: flex; align-items: center; padding: 0 16px; gap: 8px; font-weight: 600; font-size: 13px; }
+  .sh .sp { flex: 1; }
+  .sh .m { font-weight: 500; color: #444; font-size: 12.5px; }
+  #parade { position: absolute; left: 14px; top: 46px; width: 496px; height: 320px; }
+
+  .prim { position: absolute; left: 56px; right: 0; top: 380px; bottom: 0; border-top: 1px solid var(--line); }
+  .tabs { height: 40px; display: flex; align-items: center; gap: 4px; padding: 0 14px; border-bottom: 1px solid var(--line); font-size: 12.5px; }
+  .tabs b { padding: 5px 11px; border-radius: 6px; font-weight: 500; color: #777; }
+  .tabs b.on { background: #f0f0f0; color: #1e1e1e; }
+  .row1, .row3 { position: absolute; left: 0; right: 0; height: 48px; display: flex; align-items: center; justify-content: space-around; padding: 0 20px; }
+  .row1 { top: 40px; border-bottom: 1px solid #f0f0f0; } .row3 { bottom: 0; border-top: 1px solid #f0f0f0; }
+  .fld { display: flex; align-items: center; gap: 8px; color: #666; font-size: 13px; }
+  .fld .bx { position: relative; width: 74px; height: 30px; border: 1px solid #dcdcdc; border-radius: 6px; background: #fafafa; display: grid; place-items: center; color: #1e1e1e; font: 500 13px "JetBrains Mono", monospace; }
+  .fld .bx.hot { border-color: var(--blue); box-shadow: 0 0 0 2px rgba(13,153,255,.18); }
+  .fld .bx i { position: absolute; left: 14px; right: 14px; bottom: -6px; height: 3px; border-radius: 2px; }
+  .wheels { position: absolute; left: 0; right: 0; top: 110px; height: 312px; display: flex; justify-content: space-around; padding: 0 30px; }
+  .wh { width: 300px; position: relative; }
+  .wh .t { display: flex; align-items: center; justify-content: center; gap: 0; height: 36px; font-weight: 600; font-size: 14px; color: #1e1e1e; position: relative; }
+  .wh .t .l, .wh .t .r { position: absolute; top: 9px; color: #888; }
+  .wh .t .l { left: 34px; } .wh .t .r { right: 34px; }
+  .ring { position: absolute; left: 55px; top: 44px; width: 190px; height: 190px; border-radius: 50%; }
+  .ring .hue { position: absolute; inset: 0; border-radius: 50%;
+    background: conic-gradient(from 0deg, hsl(345 95% 55%), hsl(290 85% 55%) 55deg, hsl(235 90% 58%) 105deg, hsl(185 90% 45%) 160deg, hsl(135 80% 45%) 205deg, hsl(70 90% 50%) 250deg, hsl(30 95% 55%) 290deg, hsl(345 95% 55%) 360deg);
+    -webkit-mask: radial-gradient(circle, transparent 79px, #000 80px, #000 88px, transparent 89px); }
+  .ring .disc { position: absolute; inset: 11px; border-radius: 50%; background: radial-gradient(circle, #fbfbfb 0%, #f1f1f1 70%, #e8e8e8 100%); box-shadow: inset 0 0 0 1px rgba(0,0,0,.06); overflow: hidden; }
+  .ring .disc::before { content: ""; position: absolute; inset: 0; border-radius: 50%; opacity: .18;
+    background: conic-gradient(from 0deg, hsl(345 95% 55%), hsl(290 85% 55%) 55deg, hsl(235 90% 58%) 105deg, hsl(185 90% 45%) 160deg, hsl(135 80% 45%) 205deg, hsl(70 90% 50%) 250deg, hsl(30 95% 55%) 290deg, hsl(345 95% 55%) 360deg);
+    -webkit-mask: radial-gradient(circle, transparent 10%, #000 100%); }
+  .ring .cross { position: absolute; inset: 11px; }
+  .ring .cross::before, .ring .cross::after { content: ""; position: absolute; background: rgba(0,0,0,.14); }
+  .ring .cross::before { left: 50%; top: 0; bottom: 0; width: 1px; } .ring .cross::after { top: 50%; left: 0; right: 0; height: 1px; }
+  .ring .outer { position: absolute; inset: -9px; border-radius: 50%; box-shadow: 0 0 0 1px #e3e3e3 inset; }
+  .ring svg.arc { position: absolute; inset: -9px; overflow: visible; }
+  .puck { position: absolute; width: 12px; height: 12px; margin: -6px 0 0 -6px; border-radius: 50%; background: #fff; box-shadow: 0 0 0 1.5px #555, 0 1px 3px rgba(0,0,0,.3); }
+  .puck.hot { box-shadow: 0 0 0 2px var(--blue), 0 1px 3px rgba(0,0,0,.3); }
+  .vals { position: absolute; left: 0; right: 0; top: 248px; display: flex; justify-content: center; gap: 6px; }
+  .vals div { width: 62px; height: 30px; border: 1px solid #dcdcdc; border-radius: 6px; background: #fafafa; display: grid; place-items: center; font: 500 13px "JetBrains Mono", monospace; position: relative; }
+  .vals div i { position: absolute; left: 10px; right: 10px; bottom: -7px; height: 3px; border-radius: 2px; }
+  .jog { position: absolute; left: 40px; right: 40px; top: 288px; height: 20px; border-radius: 10px; background: repeating-linear-gradient(90deg, #d6d6d6 0 2px, #f3f3f3 2px 5px); box-shadow: inset 0 0 0 1px #ddd, inset 0 2px 4px rgba(0,0,0,.06); }
+</style>
+<script src="screens/kit.js"></script>
+<div class="app">
+  <nav class="rail">
+    <svg class="logo" viewBox="0 0 26 26"><rect x="3" y="3" width="20" height="20" rx="6" fill="#1e1e1e"/><path d="M9 9l8 8M17 9l-8 8" stroke="#fff" stroke-width="1.8" stroke-linecap="round"/><circle cx="9" cy="17" r="1.8" fill="#1e1e1e" stroke="#fff" stroke-width="1.4"/><circle cx="17" cy="17" r="1.8" fill="#1e1e1e" stroke="#fff" stroke-width="1.4"/></svg>
+    <div class="it"><b><svg class="i" viewBox="0 0 24 24"><path d="M7 3h7l4 4v14H7z"/><path d="M14 3v4h4"/></svg></b>文件</div>
+    <div class="it"><b><svg class="i" viewBox="0 0 24 24"><rect x="3" y="6" width="18" height="12" rx="2"/><path d="M3 10h18M8 6v12M16 6v12"/></svg></b>剪辑</div>
+    <div class="it on"><b><svg class="i" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 4a8 8 0 0 1 0 16"/></svg></b>调色</div>
+    <div class="it"><b><svg class="i" viewBox="0 0 24 24"><path d="M12 4v12M7 11l5 5 5-5M5 20h14"/></svg></b>导出</div>
+  </nav>
+
+  <section class="hist">
+    <div class="hh"><b>直方图</b><span style="color:#aaa">·</span>圆.mov<div class="sp"></div><div class="ab"><span>亮度</span><span class="on">RGB</span></div><span>叠加 ⌄</span></div>
+    <svg id="histo" width="816" height="322"></svg>
+  </section>
+
+  <section class="scope">
+    <div class="sh">示波器<div class="sp"></div><span class="m">分量图 ⌄</span>
+      <svg class="i" viewBox="0 0 24 24" style="color:#777"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg></div>
+    <img id="parade" alt="">
+  </section>
+
+  <section class="prim">
+    <div class="tabs"><b class="on">一级 · 色轮</b><b>曲线</b><b>限定器</b><b>窗口</b><b>模糊</b></div>
+    <div class="row1">
+      <div class="fld">色温<div class="bx" id="f_temp">0.0<i style="background:linear-gradient(90deg,#4a8df0,#f0a040)"></i></div></div>
+      <div class="fld">色调<div class="bx">0.00<i style="background:linear-gradient(90deg,#3fcf6a,#e04fd0)"></i></div></div>
+      <div class="fld">对比度<div class="bx" id="f_con">1.000<i style="background:linear-gradient(90deg,#111,#eee)"></i></div></div>
+      <div class="fld">轴心<div class="bx">0.435<i style="background:#bbb"></i></div></div>
+      <div class="fld">中间调细节<div class="bx">0.00<i style="background:repeating-linear-gradient(90deg,#999 0 2px,#ddd 2px 4px)"></i></div></div>
+    </div>
+    <div class="wheels" id="wheels"></div>
+    <div class="row3">
+      <div class="fld">色彩增强<div class="bx">0.00<i style="background:linear-gradient(90deg,#e04f6a,#4f7ae0)"></i></div></div>
+      <div class="fld">阴影<div class="bx">0.00<i style="background:linear-gradient(90deg,#111,#888)"></i></div></div>
+      <div class="fld">高光<div class="bx">0.00<i style="background:linear-gradient(90deg,#888,#eee)"></i></div></div>
+      <div class="fld">饱和度<div class="bx" id="f_sat">50.00<i style="background:linear-gradient(90deg,#999,#e0507a,#50a0e0)"></i></div></div>
+      <div class="fld">色相<div class="bx">50.00<i style="background:linear-gradient(90deg,#e05050,#e0d050,#50e080,#5080e0,#d050e0)"></i></div></div>
+      <div class="fld">亮度混合<div class="bx">100.00<i style="background:linear-gradient(90deg,#666,#ddd)"></i></div></div>
+    </div>
+  </section>
+</div>
+<script src="screens/grade.js"></script>
+</template>
+
+<script src="config.js"></script>
+<script src="timeline.js"></script>
+<script src="shots.js"></script>
+<script src="preview.js"></script>
+<script>
+document.title = FilmCopy.pageTitle;
+const VFOV = 58;
+
+const q = new URLSearchParams(location.search);
+window.makeScreen = (name, owner) => {
+  const frame = owner.createElement('iframe');
+  frame.scrolling = 'no';
+  frame.title = name;
+  frame.srcdoc = '<!doctype html><html lang="zh-CN"><meta charset="utf-8"><body>' +
+    document.getElementById('screen-' + name).innerHTML + '</body></html>';
+  return frame;
+};
+const frames = {}, SHOTS = [];
+let TL, T1 = 0;
+
+function load(name) {
+  return new Promise((res) => {
+    const f = makeScreen(name, document);
+    f.onload = async () => {
+
+      const d = f.contentDocument, st = d.createElement('style');
+      st.textContent = 'html.film{width:100vw!important;height:100vh!important;overflow:hidden!important;background:#0e0e10}html.film body{transform-origin:0 0}';
+      d.head.appendChild(st); d.documentElement.classList.add('film');
+      f.style.display = 'block'; await f.contentWindow.ready; res(f);
+    };
+    document.getElementById('cam').appendChild(f);
+    frames[name] = f;
+  });
+}
+
+function layout() {
+  const st = document.getElementById('stage'), pv = document.body.classList.contains('preview');
+  let W = innerWidth, H = innerHeight;
+  if (pv) { H = innerHeight - 46; W = Math.round((H * 9) / 16); if (W > innerWidth) { W = innerWidth; H = Math.round((W * 16) / 9); } }
+  Object.assign(st.style, { width: W + 'px', height: H + 'px', left: Math.round((innerWidth - W) / 2) + 'px' });
+
+  PLANE = Math.ceil(2.4 * Math.max(W, H));
+  Object.assign(document.getElementById('cam').style, { width: PLANE + 'px', height: PLANE + 'px', left: (W - PLANE) / 2 + 'px', top: (H - PLANE) / 2 + 'px' });
+  if (last !== null) seek(last);
+}
+let PLANE = 0, last = null;
+
+window.filmReady = (async () => {
+  document.body.classList.toggle('preview', !q.has('capture'));
+  layout(); addEventListener('resize', layout);
+  TL = window.filmTimeline;
+  SHOTS.push(...FILM.layout(TL));
+  const SCENES = FILM.SCENES;
+  T1 = window.FILM_END = SCENES[SCENES.length - 1].end;
+  await Promise.all([...new Set(SCENES.map((s) => s.screen))].map(load));
+  await document.fonts.ready;
+  for (const n in frames) frames[n].style.display = 'none';
+})();
+
+function shotAt(t) { return SHOTS.find((s) => t < s.end) || SHOTS[SHOTS.length - 1]; }
+window.shotIdAt = (t) => shotAt(t).id;
+
+const R = 0.7, NS = 14;
+
+const actTime = FILM.actTime;
+
+const optsAt = (t, sh) => ({ ...(sh.scene.opts || {}), T: t });
+function aim(t, sh) {
+  const s = sh.scene, win = frames[s.screen].contentWindow, f = (u) => win.focusAt(s.act, actTime(u, sh), sh.look, optsAt(u, sh));
+  if (!sh.mean) {
+    let x = 0, y = 0; for (let i = 0; i <= 24; i++) { const p = f(sh.start + ((sh.end - sh.start) * i) / 24); x += p[0]; y += p[1]; }
+    sh.mean = [x / 25, y / 25];
+  }
+  const lo = sh.clampStart ? sh.start + 2e-3 : -1e9, hi = sh.clampEnd ? sh.end - 2e-3 : 1e9;
+  let x = 0, y = 0;
+  for (let i = 0; i <= NS; i++) { const u = Math.min(hi, Math.max(lo, t - R + (2 * R * i) / NS)), p = f(u); x += p[0]; y += p[1]; }
+
+  const fo = sh.follow ?? 0.85, k = (t - sh.start) / (sh.end - sh.start), pan = sh.pan || [0, 0], p2 = sh.pan2 || [0, 0];
+  const e = sh.panE === 'out' ? 1 - (1 - k) * (1 - k) : sh.panE === 'in' ? k * k : k;
+
+  const off = sh.off || [0, 0];
+  return [sh.mean[0] + (x / (NS + 1) - sh.mean[0]) * fo + pan[0] * (e - 0.5) + p2[0] * (k * k - 0.5) + off[0], sh.mean[1] + (y / (NS + 1) - sh.mean[1]) * fo + pan[1] * (e - 0.5) + p2[1] * (k * k - 0.5) + off[1]];
+}
+
+function camera(t, sh) {
+  const st = document.getElementById('stage'), cam = document.getElementById('cam');
+  const W = st.clientWidth, H = st.clientHeight, f = H / (2 * Math.tan((VFOV * Math.PI) / 360));
+  const k = Math.min(1, Math.max(0, (t - sh.start) / (sh.end - sh.start)));
+  const w = Math.exp(Math.log(sh.w[0]) + (Math.log(sh.w[1]) - Math.log(sh.w[0])) * k), sc = W / w;
+  const [tx, ty] = aim(t, sh), [rx, ry, rz] = sh.a;
+  st.style.perspective = f + 'px'; st.style.perspectiveOrigin = `${W / 2}px ${H / 2}px`;
+  cam.style.transformOrigin = '50% 50%';
+  cam.style.transform = `rotateZ(${rz}deg) rotateX(${rx}deg) rotateY(${ry}deg)`;
+  return { sc, tx, ty, W, H, f };
+}
+
+let shown = null, CAM = null;
+window.seek = async (t) => {
+  await window.filmReady;
+  last = t;
+  const sh = shotAt(t), s = sh.scene, fr = frames[s.screen], body = fr.contentDocument.body, opts = optsAt(t, sh);
+  if (shown !== s.screen) { for (const n in frames) frames[n].style.display = n === s.screen ? 'block' : 'none'; shown = s.screen; }
+  body.style.transform = 'none';
+  fr.contentWindow.renderAt(s.act, actTime(t, sh), opts);
+  CAM = { ...camera(t, sh), a: sh.a };
+  if (fr.contentWindow.focusMutates) fr.contentWindow.renderAt(s.act, actTime(t, sh), opts);
+  body.style.transform = `translate(${PLANE / 2 - CAM.tx * CAM.sc}px, ${PLANE / 2 - CAM.ty * CAM.sc}px) scale(${CAM.sc})`;
+  if (fr.contentWindow.settled) await fr.contentWindow.settled();
+  await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+};
+
+window.camInfo = () => {
+  const { W, H, f, sc, tx, ty, a: [rx, ry, rz] } = CAM;
+  const R = new DOMMatrix().rotateAxisAngle(0, 0, 1, rz).rotateAxisAngle(1, 0, 0, rx).rotateAxisAngle(0, 1, 0, ry);
+  const A = R.transformPoint({ x: 1, y: 0, z: 0 }), B = R.transformPoint({ x: 0, y: 1, z: 0 });
+  return { t: last, shot: shotAt(last).id, W, H, f, sc, tx, ty, A: [A.x, A.y, A.z], B: [B.x, B.y, B.z] };
+};
+
+window.animationReady = window.filmReady.then(() => ({duration: T1, seek: window.seek, camera: () => ({...window.camInfo(), dpr: devicePixelRatio})}));
+openPreview(window.animationReady);
+</script>
+</body>
+</html>

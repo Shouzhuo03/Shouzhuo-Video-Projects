@@ -1,0 +1,14 @@
+:root { --chinese-font: "Noto Sans SC", "Noto Sans SC Fallback", "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC"; }
+* { box-sizing: border-box; }
+html, body {
+  margin: 0; width: 1440px; height: 900px; overflow: hidden;
+  font: 12px/1.4 "Inter", var(--chinese-font), sans-serif; color: #1e1e1e;
+  -webkit-font-smoothing: antialiased; text-rendering: geometricPrecision;
+}
+svg.i { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.4; stroke-linecap: round; stroke-linejoin: round; flex: none; }
+.cursor { position: absolute; width: 22px; height: 33px; pointer-events: none; z-index: 99;
+  filter: drop-shadow(0 1px 1.5px rgba(0,0,0,.35)); }
+.lights { display: flex; gap: 8px; }
+.lights i { width: 12px; height: 12px; border-radius: 50%; background: #ff5f57; box-shadow: inset 0 0 0 .5px rgba(0,0,0,.18); }
+.lights i:nth-child(2) { background: #febc2e; }
+.lights i:nth-child(3) { background: #28c840; }

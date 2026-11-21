@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>分身乏术 · 桌面</title>
+<link rel="stylesheet" href="fonts.css">
+<style>
+  html, body { margin: 0; background: #1b1b1d; }
+  body.preview { display: grid; place-items: center; height: calc(100vh - 46px); }
+  #c { display: block; max-width: 100%; max-height: 100%; object-fit: contain; }
+
+  #ui { position: fixed; box-sizing: border-box; inset: auto 0 0; height: 46px; display: flex; align-items: center; gap: 12px; padding: 0 12px; background: #19191b; color: #ddd; font: 13px system-ui, sans-serif; }
+  #ui button, #soundtrack { white-space: nowrap; cursor: pointer; }
+  #ui button { color: inherit; background: #313137; border: 1px solid #525258; border-radius: 4px; padding: 4px 9px; }
+  #position { flex: 1; min-width: 45px; }
+  #clock { min-width: 58px; text-align: right; font-variant-numeric: tabular-nums; }
+  #soundtrack { position: relative; }
+  #audio-file { position: absolute; inset: 0; width: 100%; opacity: 0; cursor: pointer; }
+  #soundtrack:focus-within { outline: 1px solid #ddd; }
+  body:not(.preview) #ui { display: none; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="ui">
+  <button id="play" type="button">播放</button>
+  <input id="position" type="range" min="0" value="0" step="any" aria-label="播放进度">
+  <output id="clock" for="position">0.00 s</output>
+  <label id="soundtrack">更换配乐<input id="audio-file" type="file" accept="audio/*"></label>
+  <audio id="music" src="assets/soundtrack.m4a" preload="metadata"></audio>
+</div>
+
+<script src="config.js"></script>
+<script>document.title = window.DeskConfig.pageTitle;</script>
+<script src="timeline.js"></script>
+<script src="script.js"></script>
+<script src="motion.js"></script>
+<script src="shots.js"></script>
+<script src="camera.js"></script>
+<script src="cursors.js"></script>
+<script src="paint/me.js"></script>
+<script src="skin_kit.js"></script>
+
+<script src="paint/oil.js"></script>
+<script src="scenes/home.js"></script>
+<script src="scenes/work.js"></script>
+<script src="scenes/fish.js"></script>
+<script src="scenes/s1.js"></script>
+<script src="scenes/drink.js"></script>
+<script src="scenes/run.js"></script>
+<script src="scenes/s2.js"></script>
+<script src="scenes/s3.js"></script>
+<script src="scenes/s4.js"></script>
+<script src="scenes/s5.js"></script>
+<script src="scenes/s6.js"></script>
+<script src="scenes/s7.js"></script>
+
+<script src="assets/wall_3.js"></script>
+<script src="skin_modern.js"></script>
+<script src="screen.js"></script>
+
+<script src="preview.js"></script>
+<script>
+const fontReady = document.fonts.load('400 18px "Noto Sans SC Fallback"');
+window.animationReady = Promise.all([fontReady, window.DeskSceneReady]).then(() => {
+  return new Promise((resolve, reject) => {
+    const main = document.createElement('script');
+    main.src = 'main.js';
+    main.onload = () => resolve(window.animation);
+    main.onerror = reject;
+    document.body.appendChild(main);
+  });
+});
+openPreview(window.animationReady);
+</script>
+</body>
+</html>

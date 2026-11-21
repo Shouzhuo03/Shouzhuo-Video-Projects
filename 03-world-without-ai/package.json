@@ -1,0 +1,14 @@
+{
+  "name": "world-without-ai",
+  "private": true,
+  "scripts": {
+    "render": "node render.mjs"
+  },
+  "dependencies": {
+    "puppeteer-core": "25.18.1"
+  },
+  "license": "CC-BY-4.0",
+  "engines": {
+    "node": ">=22.12.0"
+  }
+}
